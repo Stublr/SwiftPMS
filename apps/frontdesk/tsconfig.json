@@ -1,0 +1,14 @@
+{
+  "extends": "@swiftpms/tsconfig/react.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite-env.d.ts"]
+}

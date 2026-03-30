@@ -1,0 +1,21 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Tenant-scoped storage: tenants/{tenantId}/...
+    match /tenants/{tenantId}/{allPaths=**} {
+      allow read: if request.auth != null
+                  && request.auth.token.tenantId == tenantId;
+      allow write: if request.auth != null
+                   && request.auth.token.tenantId == tenantId
+                   && (request.auth.token.role == 'admin'
+                       || request.auth.token.role == 'owner'
+                       || request.auth.token.role == 'manager');
+    }
+
+    // Block all other paths
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

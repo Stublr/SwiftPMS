@@ -1,0 +1,100 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function belongsToTenant(tenantId) {
+      return isAuthenticated() && request.auth.token.tenantId == tenantId;
+    }
+
+    function hasRole(role) {
+      return request.auth.token.role == role;
+    }
+
+    function isAdmin() {
+      return hasRole('super_admin');
+    }
+
+    function isManager() {
+      return hasRole('property_manager') || isAdmin();
+    }
+
+    function isStaff() {
+      return hasRole('super_admin') || hasRole('property_manager') || hasRole('front_desk') || hasRole('housekeeping') || hasRole('auditor');
+    }
+
+    function isGuest() {
+      return hasRole('guest');
+    }
+
+    function hasPropertyAccess(propertyId) {
+      return request.auth.token.propertyIds.hasAny([propertyId]);
+    }
+
+    // Tenant root
+    match /tenants/{tenantId} {
+      allow read: if belongsToTenant(tenantId);
+      allow write: if belongsToTenant(tenantId) && isAdmin();
+
+      // Users — admin only for writes
+      match /users/{userId} {
+        allow read: if belongsToTenant(tenantId) && isStaff();
+        allow write: if belongsToTenant(tenantId) && isAdmin();
+      }
+
+      // Guests — staff can CRUD, guests can read their own
+      match /guests/{guestId} {
+        allow read: if belongsToTenant(tenantId);
+        allow create, update: if belongsToTenant(tenantId) && isStaff();
+        allow delete: if belongsToTenant(tenantId) && isManager();
+      }
+
+      // Room Types — admin/manager can manage, everyone can read
+      match /roomTypes/{roomTypeId} {
+        allow read: if belongsToTenant(tenantId);
+        allow write: if belongsToTenant(tenantId) && isManager();
+      }
+
+      // Audit log — Cloud Functions only for writes, managers can read
+      match /auditLog/{logId} {
+        allow read: if belongsToTenant(tenantId) && isManager();
+        allow write: if false;
+      }
+
+      // Properties
+      match /properties/{propertyId} {
+        allow read: if belongsToTenant(tenantId);
+        allow write: if belongsToTenant(tenantId) && isAdmin();
+
+        // Rooms — staff with property access can manage
+        match /rooms/{roomId} {
+          allow read: if belongsToTenant(tenantId);
+          allow create, update: if belongsToTenant(tenantId) && isStaff() && hasPropertyAccess(propertyId);
+          allow delete: if belongsToTenant(tenantId) && isManager();
+        }
+
+        // Reservations — Cloud Functions for mutations, staff can read
+        match /reservations/{reservationId} {
+          allow read: if belongsToTenant(tenantId);
+          allow write: if false;
+        }
+
+        // Folios — Cloud Functions for mutations, staff can read
+        match /folios/{folioId} {
+          allow read: if belongsToTenant(tenantId);
+          allow write: if false;
+        }
+
+        // Daily aggregates — Cloud Functions write, staff read
+        match /dailyAggregates/{date} {
+          allow read: if belongsToTenant(tenantId);
+          allow write: if false;
+        }
+      }
+    }
+  }
+}
