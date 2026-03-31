@@ -1,8 +1,6 @@
 import { httpsCallable } from "firebase/functions";
 import { functions } from "@/lib/firebase";
-
-const TENANT_ID = import.meta.env.VITE_TENANT_ID || "demo-tenant";
-const PROPERTY_ID = import.meta.env.VITE_PROPERTY_ID || "demo-property";
+import { getTenantId } from "@/services/property";
 
 export interface AvailableRoomType {
   id: string;
@@ -20,16 +18,16 @@ export interface AvailableRoomType {
 export async function checkAvailability(
   checkInDate: string,
   checkOutDate: string,
+  propertyId: string,
   roomTypeId?: string | null,
 ): Promise<AvailableRoomType[]> {
   const fn = httpsCallable(functions, "checkAvailability");
   const payload: Record<string, unknown> = {
-    tenantId: TENANT_ID,
-    propertyId: PROPERTY_ID,
+    tenantId: getTenantId(),
+    propertyId,
     checkInDate,
     checkOutDate,
   };
-  // Only include roomTypeId if it's a non-empty string (avoid sending null)
   if (roomTypeId) {
     payload.roomTypeId = roomTypeId;
   }

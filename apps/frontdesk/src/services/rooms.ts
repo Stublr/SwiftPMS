@@ -25,7 +25,7 @@ export async function createRoom(data: Record<string, unknown>): Promise<Room> {
   const { tenantId, propertyId } = getPath();
   const ref = doc(collection(db, `tenants/${tenantId}/properties/${propertyId}/rooms`));
   const now = new Date().toISOString();
-  const roomDoc = { ...data, status: "available", currentReservationId: null, isActive: true, updatedAt: now };
+  const roomDoc = { ...data, imageUrls: data.imageUrls ?? [], rateOverride: data.rateOverride ?? null, status: "available", currentReservationId: null, isActive: true, updatedAt: now };
   await setDoc(ref, roomDoc);
   return { id: ref.id, propertyId, ...roomDoc } as Room;
 }

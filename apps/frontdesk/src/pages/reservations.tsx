@@ -1,4 +1,14 @@
-import { ReservationStatus, type Reservation, type Guest, type RoomType } from "@swiftpms/shared";
+import {
+  ReservationStatus,
+  formatCents,
+  ChargeCategory,
+  PaymentMethod,
+  type Reservation,
+  type Guest,
+  type RoomType,
+  type Folio,
+  type Room,
+} from "@swiftpms/shared";
 import { useEffect, useState } from "react";
 
 import {
@@ -8,19 +18,23 @@ import {
   checkOutReservation,
   cancelReservation,
 } from "@/services/reservations";
-import { getGuests } from "@/services/guests";
+import { getAllGuests, createGuest } from "@/services/guests";
 import { getRoomTypes, getRooms } from "@/services/rooms";
-import type { Room } from "@swiftpms/shared";
+import { getFolioByReservation, addCharge, processPayment } from "@/services/billing";
 
 type Tab = "all" | "confirmed" | "checked_in" | "checked_out";
 
 export function ReservationsPage() {
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [guestMap, setGuestMap] = useState<Map<string, Guest>>(new Map());
+  const [roomTypeMap, setRoomTypeMap] = useState<Map<string, RoomType>>(new Map());
+  const [roomMap, setRoomMap] = useState<Map<string, Room>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
+  const [selectedReservation, setSelectedReservation] = useState<Reservation | null>(null);
 
   useEffect(() => {
     loadReservations();
@@ -30,9 +44,16 @@ export function ReservationsPage() {
     setLoading(true);
     setError("");
     try {
-      const status = activeTab === "all" ? undefined : activeTab;
-      const data = await getReservations(status);
+      const [data, guests, roomTypes, rooms] = await Promise.all([
+        getReservations(activeTab === "all" ? undefined : activeTab),
+        getAllGuests(),
+        getRoomTypes(),
+        getRooms(),
+      ]);
       setReservations(data);
+      setGuestMap(new Map(guests.map((g) => [g.id, g])));
+      setRoomTypeMap(new Map(roomTypes.map((rt) => [rt.id, rt])));
+      setRoomMap(new Map(rooms.map((r) => [r.id, r])));
     } catch {
       setError("Failed to load reservations");
     } finally {
@@ -80,9 +101,14 @@ export function ReservationsPage() {
     }
   }
 
+  function guestName(guestId: string): string {
+    const g = guestMap.get(guestId);
+    return g ? `${g.firstName} ${g.lastName}` : guestId.slice(0, 8);
+  }
+
   const filteredReservations = search
     ? reservations.filter((r) =>
-        r.guestId.toLowerCase().includes(search.toLowerCase()) ||
+        guestName(r.guestId).toLowerCase().includes(search.toLowerCase()) ||
         r.id.toLowerCase().includes(search.toLowerCase()),
       )
     : reservations;
@@ -128,7 +154,7 @@ export function ReservationsPage() {
       <div className="mt-4">
         <input
           type="text"
-          placeholder="Search by reservation or guest ID..."
+          placeholder="Search by guest name or reservation ID..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="w-full rounded-md border border-border bg-white px-3 py-2 text-sm"
@@ -178,10 +204,14 @@ export function ReservationsPage() {
                 </tr>
               ) : (
                 filteredReservations.map((res) => (
-                  <tr key={res.id}>
+                  <tr key={res.id} className="hover:bg-secondary/50">
                     <td className="px-4 py-3 font-mono text-xs">{res.id.slice(0, 8)}</td>
-                    <td className="px-4 py-3 text-xs">{res.guestId.slice(0, 8)}</td>
-                    <td className="px-4 py-3">{res.roomId ? res.roomId.slice(0, 8) : "---"}</td>
+                    <td className="px-4 py-3">{guestName(res.guestId)}</td>
+                    <td className="px-4 py-3">
+                      {res.roomId
+                        ? (roomMap.get(res.roomId)?.roomNumber ?? res.roomId.slice(0, 8))
+                        : (roomTypeMap.get(res.roomTypeId)?.name ?? "Unassigned")}
+                    </td>
                     <td className="px-4 py-3">{res.checkInDate}</td>
                     <td className="px-4 py-3">{res.checkOutDate}</td>
                     <td className="px-4 py-3 text-center">{res.nightCount}</td>
@@ -190,6 +220,12 @@ export function ReservationsPage() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setSelectedReservation(res)}
+                          className="rounded-md bg-secondary px-2 py-1 text-xs font-medium hover:bg-secondary/80"
+                        >
+                          Billing
+                        </button>
                         {res.status === ReservationStatus.CONFIRMED && (
                           <button
                             onClick={() => handleCheckIn(res.id)}
@@ -223,9 +259,444 @@ export function ReservationsPage() {
           </table>
         </div>
       )}
+
+      {/* Folio Panel */}
+      {selectedReservation && (
+        <FolioPanel
+          reservation={selectedReservation}
+          guestName={guestName(selectedReservation.guestId)}
+          onClose={() => setSelectedReservation(null)}
+        />
+      )}
     </div>
   );
 }
+
+// ─── Folio Panel ───────────────────────────────────────────────
+
+function FolioPanel({
+  reservation,
+  guestName,
+  onClose,
+}: {
+  reservation: Reservation;
+  guestName: string;
+  onClose: () => void;
+}) {
+  const [folio, setFolio] = useState<Folio | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showAddCharge, setShowAddCharge] = useState(false);
+  const [showPayment, setShowPayment] = useState(false);
+
+  useEffect(() => {
+    loadFolio();
+  }, [reservation.id]);
+
+  async function loadFolio() {
+    setLoading(true);
+    setError("");
+    try {
+      const f = await getFolioByReservation(reservation.id);
+      setFolio(f);
+    } catch {
+      setError("Failed to load folio");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div className="fixed inset-0 z-30 bg-black/30" onClick={onClose} />
+
+      {/* Panel */}
+      <div className="fixed inset-y-0 right-0 z-40 flex w-full max-w-lg flex-col bg-white shadow-xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-border px-6 py-4">
+          <div>
+            <h2 className="text-lg font-semibold">Billing — {guestName}</h2>
+            <p className="text-xs text-muted-foreground">
+              {reservation.checkInDate} to {reservation.checkOutDate} ({reservation.nightCount} nights)
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-2 hover:bg-secondary"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading folio...</p>
+          ) : error ? (
+            <p className="text-sm text-destructive">{error}</p>
+          ) : !folio ? (
+            <p className="text-sm text-muted-foreground">No folio found for this reservation.</p>
+          ) : (
+            <>
+              {/* Summary */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-md border border-border p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Charges</p>
+                  <p className="mt-1 text-lg font-bold">{formatCents(folio.totalCharges)}</p>
+                </div>
+                <div className="rounded-md border border-border p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Paid</p>
+                  <p className="mt-1 text-lg font-bold text-success">{formatCents(folio.totalPayments)}</p>
+                </div>
+                <div className="rounded-md border border-border p-3 text-center">
+                  <p className="text-xs text-muted-foreground">Balance</p>
+                  <p className={`mt-1 text-lg font-bold ${folio.balance > 0 ? "text-destructive" : "text-success"}`}>
+                    {formatCents(folio.balance)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-3 text-right">
+                <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                  folio.status === "settled" ? "bg-success/10 text-success" : "bg-primary/10 text-primary"
+                }`}>
+                  {folio.status}
+                </span>
+              </div>
+
+              {/* Charges */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Charges</h3>
+                  {folio.status === "open" && (
+                    <button
+                      onClick={() => setShowAddCharge(true)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      + Add Charge
+                    </button>
+                  )}
+                </div>
+                {folio.charges.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">No charges yet.</p>
+                ) : (
+                  <div className="mt-2 space-y-1">
+                    {folio.charges.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between rounded-md bg-secondary px-3 py-2 text-xs">
+                        <div>
+                          <span className="font-medium">{c.description}</span>
+                          <span className="ml-2 text-muted-foreground capitalize">({c.category})</span>
+                          {c.quantity > 1 && <span className="ml-1 text-muted-foreground">x{c.quantity}</span>}
+                        </div>
+                        <span className="font-medium">{formatCents(c.total)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Payments */}
+              <div className="mt-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">Payments</h3>
+                  {folio.status === "open" && folio.balance > 0 && (
+                    <button
+                      onClick={() => setShowPayment(true)}
+                      className="text-xs font-medium text-primary hover:underline"
+                    >
+                      + Process Payment
+                    </button>
+                  )}
+                </div>
+                {folio.payments.length === 0 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">No payments yet.</p>
+                ) : (
+                  <div className="mt-2 space-y-1">
+                    {folio.payments.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between rounded-md bg-success/5 px-3 py-2 text-xs">
+                        <div>
+                          <span className="font-medium capitalize">{p.method.replace("_", " ")}</span>
+                          {p.reference && <span className="ml-2 text-muted-foreground">Ref: {p.reference}</span>}
+                          <span className="ml-2 text-muted-foreground">
+                            {new Date(p.processedAt).toLocaleString("en-ZA", { dateStyle: "short", timeStyle: "short" })}
+                          </span>
+                        </div>
+                        <span className="font-medium text-success">{formatCents(p.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Add Charge Form */}
+              {showAddCharge && (
+                <AddChargeForm
+                  folioId={folio.id}
+                  onDone={() => {
+                    setShowAddCharge(false);
+                    loadFolio();
+                  }}
+                  onCancel={() => setShowAddCharge(false)}
+                />
+              )}
+
+              {/* Process Payment Form */}
+              {showPayment && (
+                <PaymentForm
+                  folioId={folio.id}
+                  balance={folio.balance}
+                  onDone={() => {
+                    setShowPayment(false);
+                    loadFolio();
+                  }}
+                  onCancel={() => setShowPayment(false)}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Add Charge Form ───────────────────────────────────────────
+
+function AddChargeForm({
+  folioId,
+  onDone,
+  onCancel,
+}: {
+  folioId: string;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    category: "service" as string,
+    description: "",
+    amount: "",
+    quantity: 1,
+  });
+
+  const categories = Object.entries(ChargeCategory).map(([, v]) => v);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const amountCents = Math.round(parseFloat(form.amount) * 100);
+    if (!amountCents || amountCents <= 0) {
+      setError("Enter a valid amount");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await addCharge({
+        folioId,
+        category: form.category as typeof ChargeCategory[keyof typeof ChargeCategory],
+        description: form.description,
+        amount: amountCents,
+        quantity: form.quantity,
+      });
+      onDone();
+    } catch {
+      setError("Failed to add charge");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-border p-4">
+      <h4 className="text-sm font-semibold">Add Charge</h4>
+      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      <form onSubmit={handleSubmit} className="mt-3 space-y-3">
+        <div>
+          <label className="block text-xs font-medium">Category</label>
+          <select
+            value={form.category}
+            onChange={(e) => setForm((f) => ({ ...f, category: e.target.value }))}
+            className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+          >
+            {categories.map((c) => (
+              <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium">Description *</label>
+          <input
+            type="text"
+            required
+            value={form.description}
+            onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+            placeholder="e.g. Room service breakfast"
+            className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-medium">Amount (R) *</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0.01"
+              required
+              value={form.amount}
+              onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+              placeholder="0.00"
+              className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium">Qty</label>
+            <input
+              type="number"
+              min={1}
+              value={form.quantity}
+              onChange={(e) => setForm((f) => ({ ...f, quantity: parseInt(e.target.value) || 1 }))}
+              className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+            />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {saving ? "Adding..." : "Add Charge"}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-secondary"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Payment Form ──────────────────────────────────────────────
+
+function PaymentForm({
+  folioId,
+  balance,
+  onDone,
+  onCancel,
+}: {
+  folioId: string;
+  balance: number;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [form, setForm] = useState({
+    method: "cash" as string,
+    amount: (balance / 100).toFixed(2),
+    reference: "",
+  });
+
+  const methods = Object.entries(PaymentMethod).map(([, v]) => v);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const amountCents = Math.round(parseFloat(form.amount) * 100);
+    if (!amountCents || amountCents <= 0) {
+      setError("Enter a valid amount");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await processPayment({
+        folioId,
+        method: form.method as typeof PaymentMethod[keyof typeof PaymentMethod],
+        amount: amountCents,
+        reference: form.reference || undefined,
+      });
+      onDone();
+    } catch {
+      setError("Failed to process payment");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-md border border-success/30 bg-success/5 p-4">
+      <h4 className="text-sm font-semibold">Process Payment</h4>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Outstanding balance: <strong>{formatCents(balance)}</strong>
+      </p>
+      {error && <p className="mt-2 text-xs text-destructive">{error}</p>}
+      <form onSubmit={handleSubmit} className="mt-3 space-y-3">
+        <div>
+          <label className="block text-xs font-medium">Payment Method</label>
+          <select
+            value={form.method}
+            onChange={(e) => setForm((f) => ({ ...f, method: e.target.value }))}
+            className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+          >
+            {methods.map((m) => (
+              <option key={m} value={m}>
+                {m.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium">Amount (R) *</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0.01"
+            required
+            value={form.amount}
+            onChange={(e) => setForm((f) => ({ ...f, amount: e.target.value }))}
+            className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium">Reference (optional)</label>
+          <input
+            type="text"
+            value={form.reference}
+            onChange={(e) => setForm((f) => ({ ...f, reference: e.target.value }))}
+            placeholder="e.g. Card last 4 digits, transfer ref"
+            className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+          />
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="submit"
+            disabled={saving}
+            className="rounded-md bg-success px-3 py-1.5 text-xs font-medium text-white hover:bg-success/90 disabled:opacity-50"
+          >
+            {saving ? "Processing..." : `Pay ${form.amount ? formatCents(Math.round(parseFloat(form.amount) * 100)) : ""}`}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-secondary"
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+// ─── Status Badge ──────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
   const colorMap: Record<string, string> = {
@@ -243,6 +714,8 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ─── Create Reservation Form ───────────────────────────────────
+
 function CreateReservationForm({
   onSave,
   onCancel,
@@ -256,6 +729,9 @@ function CreateReservationForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [loadingData, setLoadingData] = useState(true);
+  const [showNewGuest, setShowNewGuest] = useState(false);
+  const [newGuest, setNewGuest] = useState({ firstName: "", lastName: "", email: "", phone: "" });
+  const [creatingGuest, setCreatingGuest] = useState(false);
 
   const [form, setForm] = useState({
     guestId: "",
@@ -269,7 +745,7 @@ function CreateReservationForm({
   });
 
   useEffect(() => {
-    Promise.all([getGuests(), getRoomTypes(), getRooms()])
+    Promise.all([getAllGuests(), getRoomTypes(), getRooms()])
       .then(([g, rt, r]) => {
         setGuests(g);
         setRoomTypes(rt);
@@ -330,20 +806,103 @@ function CreateReservationForm({
 
       <form onSubmit={handleSubmit} className="mt-4 max-w-lg space-y-4">
         <div>
-          <label className="block text-sm font-medium">Guest *</label>
-          <select
-            required
-            value={form.guestId}
-            onChange={(e) => setForm((f) => ({ ...f, guestId: e.target.value }))}
-            className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
-          >
-            <option value="">Select a guest...</option>
-            {guests.map((g) => (
-              <option key={g.id} value={g.id}>
-                {g.firstName} {g.lastName} {g.email ? `(${g.email})` : ""}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium">Guest *</label>
+            <button
+              type="button"
+              onClick={() => setShowNewGuest(!showNewGuest)}
+              className="text-xs font-medium text-primary hover:underline"
+            >
+              {showNewGuest ? "Select existing" : "+ New Guest"}
+            </button>
+          </div>
+
+          {showNewGuest ? (
+            <div className="mt-2 rounded-md border border-border bg-secondary/30 p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium">First Name *</label>
+                  <input
+                    type="text"
+                    value={newGuest.firstName}
+                    onChange={(e) => setNewGuest((g) => ({ ...g, firstName: e.target.value }))}
+                    placeholder="John"
+                    className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium">Last Name *</label>
+                  <input
+                    type="text"
+                    value={newGuest.lastName}
+                    onChange={(e) => setNewGuest((g) => ({ ...g, lastName: e.target.value }))}
+                    placeholder="Smith"
+                    className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium">Email</label>
+                <input
+                  type="email"
+                  value={newGuest.email}
+                  onChange={(e) => setNewGuest((g) => ({ ...g, email: e.target.value }))}
+                  placeholder="john@example.com"
+                  className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium">Phone</label>
+                <input
+                  type="tel"
+                  value={newGuest.phone}
+                  onChange={(e) => setNewGuest((g) => ({ ...g, phone: e.target.value }))}
+                  placeholder="+27 82 123 4567"
+                  className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={creatingGuest || !newGuest.firstName || !newGuest.lastName}
+                onClick={async () => {
+                  setCreatingGuest(true);
+                  try {
+                    const created = await createGuest({
+                      firstName: newGuest.firstName,
+                      lastName: newGuest.lastName,
+                      email: newGuest.email || null,
+                      phone: newGuest.phone || null,
+                    });
+                    setGuests((prev) => [...prev, created]);
+                    setForm((f) => ({ ...f, guestId: created.id }));
+                    setShowNewGuest(false);
+                    setNewGuest({ firstName: "", lastName: "", email: "", phone: "" });
+                  } catch {
+                    setError("Failed to create guest");
+                  } finally {
+                    setCreatingGuest(false);
+                  }
+                }}
+                className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+              >
+                {creatingGuest ? "Creating..." : "Create & Select Guest"}
+              </button>
+            </div>
+          ) : (
+            <select
+              required
+              value={form.guestId}
+              onChange={(e) => setForm((f) => ({ ...f, guestId: e.target.value }))}
+              className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+            >
+              <option value="">Select a guest...</option>
+              {guests.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.firstName} {g.lastName} {g.email ? `(${g.email})` : ""}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div>

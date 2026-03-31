@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { useUIStore } from "@/stores/ui.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { guestLogout } from "@/services/auth";
+import { getAllProperties } from "@/services/property";
 
 export function GuestHeader() {
   const navigate = useUIStore((s) => s.navigate);
@@ -8,6 +10,18 @@ export function GuestHeader() {
   const isAuthenticated = useGuestAuthStore((s) => s.isAuthenticated);
   const firstName = useGuestAuthStore((s) => s.firstName);
   const lastName = useGuestAuthStore((s) => s.lastName);
+  const [brandName, setBrandName] = useState("SwiftPMS");
+
+  useEffect(() => {
+    getAllProperties().then((props) => {
+      if (props.length === 1) {
+        setBrandName(props[0].name);
+      } else if (props.length > 1) {
+        // Use tenant name or generic
+        setBrandName("Our Lodges");
+      }
+    }).catch(() => {});
+  }, []);
 
   async function handleLogout() {
     await guestLogout();
@@ -35,7 +49,7 @@ export function GuestHeader() {
               d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z"
             />
           </svg>
-          SwiftPMS
+          {brandName}
         </button>
 
         {/* Navigation */}

@@ -10,6 +10,7 @@ const mainNavItems = [
 ];
 
 const adminNavItems = [
+  { label: "Properties", path: "/admin/properties", icon: "P" },
   { label: "Room Setup", path: "/admin/rooms", icon: "S" },
   { label: "Staff", path: "/admin/users", icon: "U" },
 ];
@@ -49,13 +50,7 @@ export function Sidebar() {
         </span>
       </div>
 
-      {/* Property info */}
-      {sidebarOpen && propertyName && (
-        <div className="border-b border-white/10 px-4 py-3 text-xs">
-          <p className="text-white/60">Property</p>
-          <p className="font-medium">{propertyName}</p>
-        </div>
-      )}
+      {/* Property info removed — now in header dropdown */}
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
         {mainNavItems.map(renderNavButton)}

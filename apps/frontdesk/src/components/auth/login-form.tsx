@@ -17,8 +17,14 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       await login(email, password);
       onSuccess();
     } catch (err: unknown) {
-      const apiErr = err as { error?: { message?: string } };
-      setError(apiErr?.error?.message ?? "Login failed. Please try again.");
+      const firebaseErr = err as { code?: string; message?: string };
+      if (firebaseErr?.code === "auth/wrong-password" || firebaseErr?.code === "auth/invalid-credential") {
+        setError("Incorrect email or password.");
+      } else if (firebaseErr?.code === "auth/user-not-found") {
+        setError("No account found with this email.");
+      } else {
+        setError(firebaseErr?.message ?? "Login failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

@@ -196,6 +196,8 @@ function RoomForm({
     roomNumber: "",
     roomTypeId: "",
     floor: 1,
+    rateOverride: "",
+    imageUrls: "",
     notes: "",
   });
   const [saving, setSaving] = useState(false);
@@ -210,14 +212,22 @@ function RoomForm({
     setSaving(true);
     setError("");
     try {
+      const rateCents = form.rateOverride ? Math.round(parseFloat(form.rateOverride) * 100) : undefined;
+      const images = form.imageUrls.split("\n").map((u) => u.trim()).filter(Boolean);
       await onSave({
         roomNumber: form.roomNumber,
         roomTypeId: form.roomTypeId,
         floor: form.floor,
+        rateOverride: rateCents || null,
+        imageUrls: images.length > 0 ? images : undefined,
         notes: form.notes || null,
       });
-    } catch {
-      setError("Failed to create room");
+    } catch (err) {
+      const isPermission = err && typeof err === "object" && "code" in err
+        && (err as { code: string }).code === "permission-denied";
+      setError(isPermission
+        ? "You don't have permission to manage rooms. Please log in as an admin."
+        : "Failed to create room");
     } finally {
       setSaving(false);
     }
@@ -235,13 +245,13 @@ function RoomForm({
 
       <form onSubmit={handleSubmit} className="mt-4 max-w-lg space-y-4">
         <div>
-          <label className="block text-sm font-medium">Room Number *</label>
+          <label className="block text-sm font-medium">Room Name / Number *</label>
           <input
             type="text"
             required
             value={form.roomNumber}
             onChange={(e) => setForm((f) => ({ ...f, roomNumber: e.target.value }))}
-            placeholder="e.g., 101"
+            placeholder="e.g., 101, Suite A, Garden Room"
             className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
           />
         </div>
@@ -270,6 +280,30 @@ function RoomForm({
             onChange={(e) => setForm((f) => ({ ...f, floor: parseInt(e.target.value) || 1 }))}
             className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Rate Override (R)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.rateOverride}
+            onChange={(e) => setForm((f) => ({ ...f, rateOverride: e.target.value }))}
+            placeholder="Leave blank to use room type rate"
+            className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">Overrides the room type base rate for this specific room</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Image URLs</label>
+          <textarea
+            value={form.imageUrls}
+            onChange={(e) => setForm((f) => ({ ...f, imageUrls: e.target.value }))}
+            rows={3}
+            placeholder="One URL per line"
+            className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">Room-specific photos. Falls back to room type images if empty.</p>
         </div>
         <div>
           <label className="block text-sm font-medium">Notes</label>
@@ -316,6 +350,8 @@ function RoomEditForm({
     roomNumber: room.roomNumber,
     roomTypeId: room.roomTypeId,
     floor: room.floor,
+    rateOverride: room.rateOverride ? (room.rateOverride / 100).toFixed(2) : "",
+    imageUrls: (room.imageUrls ?? []).join("\n"),
     notes: room.notes ?? "",
     isActive: room.isActive,
   });
@@ -327,15 +363,23 @@ function RoomEditForm({
     setSaving(true);
     setError("");
     try {
+      const rateCents = form.rateOverride ? Math.round(parseFloat(form.rateOverride) * 100) : null;
+      const images = form.imageUrls.split("\n").map((u) => u.trim()).filter(Boolean);
       await onSave({
         roomNumber: form.roomNumber,
         roomTypeId: form.roomTypeId,
         floor: form.floor,
+        rateOverride: rateCents,
+        imageUrls: images,
         notes: form.notes || null,
         isActive: form.isActive,
       });
-    } catch {
-      setError("Failed to update room");
+    } catch (err) {
+      const isPermission = err && typeof err === "object" && "code" in err
+        && (err as { code: string }).code === "permission-denied";
+      setError(isPermission
+        ? "You don't have permission to manage rooms. Please log in as an admin."
+        : "Failed to update room");
     } finally {
       setSaving(false);
     }
@@ -353,7 +397,7 @@ function RoomEditForm({
 
       <form onSubmit={handleSubmit} className="mt-4 max-w-lg space-y-4">
         <div>
-          <label className="block text-sm font-medium">Room Number *</label>
+          <label className="block text-sm font-medium">Room Name / Number *</label>
           <input
             type="text"
             required
@@ -386,6 +430,30 @@ function RoomEditForm({
             onChange={(e) => setForm((f) => ({ ...f, floor: parseInt(e.target.value) || 1 }))}
             className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
           />
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Rate Override (R)</label>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.rateOverride}
+            onChange={(e) => setForm((f) => ({ ...f, rateOverride: e.target.value }))}
+            placeholder="Leave blank to use room type rate"
+            className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">Overrides the room type base rate for this specific room</p>
+        </div>
+        <div>
+          <label className="block text-sm font-medium">Image URLs</label>
+          <textarea
+            value={form.imageUrls}
+            onChange={(e) => setForm((f) => ({ ...f, imageUrls: e.target.value }))}
+            rows={3}
+            placeholder="One URL per line"
+            className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+          />
+          <p className="mt-1 text-xs text-muted-foreground">Room-specific photos. Falls back to room type images if empty.</p>
         </div>
         <div>
           <label className="block text-sm font-medium">Notes</label>

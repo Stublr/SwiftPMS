@@ -5,7 +5,7 @@ import { addCents, subtractCents } from "@swiftpms/shared";
 import { processPaymentSchema } from "@swiftpms/shared";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
-import { db, folioRef } from "../lib/firestore.js";
+import { db, folioRef, reservationsRef, roomRef } from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
 
@@ -49,6 +49,40 @@ export const processPayment = onCall({ cors: true }, async (request) => {
         status: newStatus,
         updatedAt: FieldValue.serverTimestamp(),
       });
+
+      // If folio is now settled, confirm the room reservation
+      if (newStatus === "settled") {
+        // Find the reservation linked to this folio
+        const resQuery = await tx.get(
+          reservationsRef(tenantId, propertyId)
+            .where("__name__", ">=", "")
+            .limit(500),
+        );
+        const linkedRes = resQuery.docs.find(
+          (d) => d.id === (folio.reservationId as string),
+        );
+        if (linkedRes) {
+          const resData = linkedRes.data();
+          const rid = resData.roomId as string | null;
+          if (rid) {
+            const rRef = roomRef(tenantId, propertyId, rid);
+            const rSnap = await tx.get(rRef);
+            if (rSnap.exists && rSnap.data()?.status === "held") {
+              tx.update(rRef, {
+                status: "reserved",
+                holdExpiresAt: null,
+                currentReservationId: linkedRes.id,
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+            }
+          }
+          // Clear hold expiry on reservation
+          tx.update(linkedRes.ref, {
+            holdExpiresAt: null,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
+      }
 
       return { balance: Math.max(0, newBalance), status: newStatus };
     });

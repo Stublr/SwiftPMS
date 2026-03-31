@@ -1,7 +1,8 @@
-import { formatCents, type Room, type Reservation, RoomStatus } from "@swiftpms/shared";
+import { formatCents, type Room, type Reservation, type Guest, RoomStatus } from "@swiftpms/shared";
 import { useEffect, useState } from "react";
 
 import { onRooms, onTodayReservations, onTodayDepartures, onDailyAggregates } from "@/lib/realtime";
+import { getAllGuests } from "@/services/guests";
 import { useAuthStore } from "@/stores/auth.store";
 import { usePropertyStore } from "@/stores/property.store";
 
@@ -14,6 +15,7 @@ export function DashboardPage() {
   const [todayArrivals, setTodayArrivals] = useState<Reservation[]>([]);
   const [todayDepartures, setTodayDepartures] = useState<Reservation[]>([]);
   const [aggregates, setAggregates] = useState<Record<string, number> | null>(null);
+  const [guestMap, setGuestMap] = useState<Map<string, Guest>>(new Map());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,6 +34,10 @@ export function DashboardPage() {
         setLoading(false);
       }
     });
+
+    getAllGuests()
+      .then((guests) => setGuestMap(new Map(guests.map((g) => [g.id, g]))))
+      .catch(() => {});
 
     const unsubArrivals = onTodayReservations((data) => {
       setTodayArrivals(data);
@@ -60,6 +66,7 @@ export function DashboardPage() {
 
   const statusCounts = {
     available: rooms.filter((r) => r.status === RoomStatus.AVAILABLE).length,
+    held: rooms.filter((r) => r.status === RoomStatus.HELD).length,
     occupied: occupiedRooms,
     reserved: rooms.filter((r) => r.status === RoomStatus.RESERVED).length,
     dirty: rooms.filter((r) => r.status === RoomStatus.DIRTY).length,
@@ -166,31 +173,42 @@ export function DashboardPage() {
             </div>
           </div>
 
-          {todayArrivals.length > 0 && (
+          {todayArrivals.filter((r) => r.status === "confirmed").length > 0 && (
             <div className="mt-4">
               <h3 className="text-xs font-semibold uppercase text-muted-foreground">
                 Upcoming Check-ins
               </h3>
               <div className="mt-2 space-y-1">
-                {todayArrivals.slice(0, 5).map((res) => (
-                  <div
-                    key={res.id}
-                    className="flex items-center justify-between rounded-md bg-secondary px-3 py-2 text-xs"
-                  >
-                    <span className="font-medium">#{res.id.slice(0, 8)}</span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 ${
-                        res.status === "confirmed"
-                          ? "bg-primary/10 text-primary"
-                          : res.status === "checked_in"
-                            ? "bg-success/10 text-success"
-                            : "bg-secondary text-muted-foreground"
-                      }`}
+                {todayArrivals.filter((r) => r.status === "confirmed").slice(0, 5).map((res) => {
+                  const guest = guestMap.get(res.guestId);
+                  const guestLabel = guest
+                    ? `${guest.firstName} ${guest.lastName}`
+                    : res.guestId.slice(0, 8);
+                  return (
+                    <div
+                      key={res.id}
+                      className="flex items-center justify-between rounded-md bg-secondary px-3 py-2 text-xs"
                     >
-                      {res.status.replace("_", " ")}
-                    </span>
-                  </div>
-                ))}
+                      <div>
+                        <span className="font-medium">{guestLabel}</span>
+                        <span className="ml-2 text-muted-foreground">
+                          {res.checkInDate} — {res.checkOutDate}
+                        </span>
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 ${
+                          res.status === "confirmed"
+                            ? "bg-primary/10 text-primary"
+                            : res.status === "checked_in"
+                              ? "bg-success/10 text-success"
+                              : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        {res.status.replace("_", " ")}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

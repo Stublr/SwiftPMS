@@ -70,10 +70,10 @@ service cloud.firestore {
         allow read: if belongsToTenant(tenantId);
         allow write: if belongsToTenant(tenantId) && isAdmin();
 
-        // Rooms — staff with property access can manage
+        // Rooms — staff with property access can manage, admins can manage all
         match /rooms/{roomId} {
           allow read: if belongsToTenant(tenantId);
-          allow create, update: if belongsToTenant(tenantId) && isStaff() && hasPropertyAccess(propertyId);
+          allow create, update: if belongsToTenant(tenantId) && (isAdmin() || (isStaff() && hasPropertyAccess(propertyId)));
           allow delete: if belongsToTenant(tenantId) && isManager();
         }
 

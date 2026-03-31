@@ -1,11 +1,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
-import { calculateNights, multiplyCents, createReservationSchema } from "@swiftpms/shared";
+import { calculateNights, multiplyCents, formatCents, createReservationSchema } from "@swiftpms/shared";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
-import { db, reservationsRef, foliosRef, roomTypeRef, guestRef } from "../lib/firestore.js";
+import { db, reservationsRef, foliosRef, roomTypeRef, roomsRef, guestRef, propertyRef } from "../lib/firestore.js";
 import { validateRequest } from "../lib/validation.js";
+import { sendBookingConfirmation } from "../lib/email.js";
 
 export const createGuestReservation = onCall({ cors: true }, async (request) => {
   try {
@@ -19,6 +20,12 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
     if (!propertyId) throw preconditionFailed("propertyId is required");
 
     const data = validateRequest(createReservationSchema, request.data);
+
+    // Check property is active
+    const propSnap = await propertyRef(tenantId, propertyId).get();
+    if (!propSnap.exists || !(propSnap.data()?.isActive)) {
+      throw preconditionFailed("This property is currently unavailable for bookings.");
+    }
 
     // Verify guestId matches authenticated user
     if (data.guestId !== request.auth.uid) {
@@ -39,11 +46,52 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
       const roomRate = roomType.baseRate as number;
       const totalRoomCharges = multiplyCents(roomRate, nightCount);
 
-      // Create reservation (no room assigned yet - front desk will assign at check-in)
+      // Auto-assign an available room of this type
+      const allRooms = await tx.get(
+        roomsRef(tenantId, propertyId)
+          .where("roomTypeId", "==", data.roomTypeId)
+          .where("isActive", "==", true),
+      );
+
+      // Find overlapping reservations to exclude booked rooms
+      const allRes = await tx.get(
+        reservationsRef(tenantId, propertyId)
+          .where("status", "in", ["confirmed", "checked_in"]),
+      );
+      const bookedRoomIds = new Set<string>();
+      for (const rd of allRes.docs) {
+        const r = rd.data();
+        if (
+          r.roomId &&
+          (r.checkInDate as string) < data.checkOutDate &&
+          (r.checkOutDate as string) > data.checkInDate
+        ) {
+          bookedRoomIds.add(r.roomId as string);
+        }
+      }
+
+      const availableRoom = allRooms.docs.find((d) => {
+        const s = d.data().status as string;
+        return (s === "available") && !bookedRoomIds.has(d.id);
+      });
+
+      if (!availableRoom) {
+        throw preconditionFailed("No rooms available for the selected type and dates.");
+      }
+
+      // Hold the room for 30 minutes
+      const holdExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+      tx.update(availableRoom.ref, {
+        status: "held",
+        holdExpiresAt,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+
+      // Create reservation with room assigned
       const resRef = reservationsRef(tenantId, propertyId).doc();
       tx.set(resRef, {
         guestId: data.guestId,
-        roomId: null,
+        roomId: availableRoom.id,
         roomTypeId: data.roomTypeId,
         checkInDate: data.checkInDate,
         checkOutDate: data.checkOutDate,
@@ -51,6 +99,7 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
         adults: data.adults,
         children: data.children ?? 0,
         status: "confirmed",
+        holdExpiresAt,
         roomRate,
         totalRoomCharges,
         specialRequests: data.specialRequests ?? null,
@@ -100,6 +149,33 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
         totalRoomCharges,
       };
     });
+
+    // Send booking confirmation email (non-blocking)
+    try {
+      const guestSnap = await guestRef(tenantId, data.guestId).get();
+      const guest = guestSnap.data();
+      const propData = propSnap.data();
+      const rtSnap = await roomTypeRef(tenantId, data.roomTypeId).get();
+      const rtData = rtSnap.data();
+      const guestEmail = guest?.email as string | undefined;
+
+      if (guestEmail) {
+        await sendBookingConfirmation({
+          to: guestEmail,
+          guestName: `${guest?.firstName ?? ""} ${guest?.lastName ?? ""}`.trim() || "Guest",
+          propertyName: (propData?.name as string) ?? "Our Lodge",
+          roomTypeName: (rtData?.name as string) ?? "Room",
+          roomName: null,
+          checkInDate: data.checkInDate,
+          checkOutDate: data.checkOutDate,
+          nightCount: result.nightCount,
+          totalAmount: formatCents(result.totalRoomCharges),
+          reservationId: result.id,
+        });
+      }
+    } catch (emailErr) {
+      console.error("Failed to send booking email:", emailErr);
+    }
 
     return result;
   } catch (err) {

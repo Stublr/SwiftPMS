@@ -1,8 +1,8 @@
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { z } from "zod";
 
-import { wrapError } from "../lib/errors.js";
-import { roomsRef, roomTypesRef, reservationsRef } from "../lib/firestore.js";
+import { wrapError, preconditionFailed } from "../lib/errors.js";
+import { propertyRef, roomsRef, roomTypesRef, reservationsRef } from "../lib/firestore.js";
 import { validateRequest } from "../lib/validation.js";
 
 const checkAvailabilitySchema = z.object({
@@ -16,6 +16,12 @@ const checkAvailabilitySchema = z.object({
 export const checkAvailability = onCall({ cors: true }, async (request) => {
   try {
     const data = validateRequest(checkAvailabilitySchema, request.data);
+
+    // Check if property is active
+    const propSnap = await propertyRef(data.tenantId, data.propertyId).get();
+    if (!propSnap.exists || !(propSnap.data()?.isActive)) {
+      throw preconditionFailed("This property is currently unavailable.");
+    }
 
     // Get all active room types
     let rtQuery = roomTypesRef(data.tenantId).where("isActive", "==", true);
@@ -51,9 +57,12 @@ export const checkAvailability = onCall({ cors: true }, async (request) => {
     for (const doc of roomsSnap.docs) {
       const room = doc.data();
       const status = room.status as string;
-      // Room must be physically available (not occupied, maintenance, dirty)
-      // OR reserved (will be free by then) — and not date-conflicting
-      if ((status === "available" || status === "reserved") && !bookedRoomIds.has(doc.id)) {
+      // Room must be physically available (not occupied, maintenance, dirty, held)
+      // Held rooms with expired holds are treated as available
+      const isHeldButExpired = status === "held" &&
+        room.holdExpiresAt && new Date(room.holdExpiresAt as string) < new Date();
+      const isAvailable = status === "available" || status === "reserved" || isHeldButExpired;
+      if (isAvailable && !bookedRoomIds.has(doc.id)) {
         const typeId = room.roomTypeId as string;
         availableByType.set(typeId, (availableByType.get(typeId) ?? 0) + 1);
       }

@@ -16,6 +16,7 @@ export function BookingPage() {
   const checkOutDate = useBookingStore((s) => s.checkOutDate);
   const adults = useBookingStore((s) => s.adults);
   const children = useBookingStore((s) => s.children);
+  const selectedPropertyId = useBookingStore((s) => s.selectedPropertyId);
   const selectedRoomTypeId = useBookingStore((s) => s.selectedRoomTypeId);
 
   const isAuthenticated = useGuestAuthStore((s) => s.isAuthenticated);
@@ -41,7 +42,7 @@ export function BookingPage() {
   const [authLoading, setAuthLoading] = useState(false);
 
   useEffect(() => {
-    if (!checkInDate || !checkOutDate || !selectedRoomTypeId) {
+    if (!checkInDate || !checkOutDate || !selectedRoomTypeId || !selectedPropertyId) {
       navigate("/rooms");
       return;
     }
@@ -55,6 +56,7 @@ export function BookingPage() {
       const results = await checkAvailability(
         checkInDate,
         checkOutDate,
+        selectedPropertyId!,
         selectedRoomTypeId,
       );
       const found = results.find((r) => r.id === selectedRoomTypeId);
@@ -121,6 +123,7 @@ export function BookingPage() {
         adults,
         children,
         specialRequests: specialRequests.trim() || undefined,
+        propertyId: selectedPropertyId!,
       });
       navigate("/confirmation");
     } catch (err) {

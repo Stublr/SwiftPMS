@@ -23,3 +23,4 @@ export { createGuestReservation } from "./guest/createGuestReservation.js";
 
 // Triggers
 export { onReservationUpdate } from "./triggers/onReservationUpdate.js";
+export { releaseExpiredHolds } from "./triggers/releaseExpiredHolds.js";

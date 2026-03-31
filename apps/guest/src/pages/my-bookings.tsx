@@ -137,7 +137,13 @@ export function MyBookingsPage() {
                     </p>
                     <p className="mt-0.5 text-sm text-muted-foreground">
                       Booked{" "}
-                      {new Date(booking.createdAt).toLocaleDateString("en-ZA", {
+                      {(() => {
+                        const ca = booking.createdAt as unknown;
+                        if (ca && typeof ca === "object" && "seconds" in (ca as Record<string, unknown>)) {
+                          return new Date((ca as { seconds: number }).seconds * 1000);
+                        }
+                        return new Date(booking.createdAt);
+                      })().toLocaleDateString("en-ZA", {
                         day: "numeric",
                         month: "short",
                         year: "numeric",

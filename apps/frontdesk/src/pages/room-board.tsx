@@ -7,6 +7,7 @@ import { usePropertyStore } from "@/stores/property.store";
 
 const STATUS_COLORS: Record<string, string> = {
   [RoomStatus.AVAILABLE]: "bg-green-100 border-green-400 text-green-800",
+  [RoomStatus.HELD]: "bg-amber-100 border-amber-400 text-amber-800",
   [RoomStatus.OCCUPIED]: "bg-blue-100 border-blue-400 text-blue-800",
   [RoomStatus.RESERVED]: "bg-yellow-100 border-yellow-400 text-yellow-800",
   [RoomStatus.DIRTY]: "bg-orange-100 border-orange-400 text-orange-800",
@@ -15,6 +16,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, string> = {
   [RoomStatus.AVAILABLE]: "Available",
+  [RoomStatus.HELD]: "Held (30 min)",
   [RoomStatus.OCCUPIED]: "Occupied",
   [RoomStatus.RESERVED]: "Reserved",
   [RoomStatus.DIRTY]: "Dirty",

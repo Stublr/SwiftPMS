@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
 import { queryClient } from "@/lib/query-client";
+import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminRoomsPage } from "@/pages/admin/rooms";
 import { UsersPage } from "@/pages/admin/users";
 import { DashboardPage } from "@/pages/dashboard";
@@ -29,6 +30,8 @@ function PageRouter() {
       return <GuestsPage />;
     case "/reports":
       return <ReportsPage />;
+    case "/admin/properties":
+      return <AdminPropertiesPage />;
     case "/admin/rooms":
       return <AdminRoomsPage />;
     case "/admin/users":

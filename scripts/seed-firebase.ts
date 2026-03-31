@@ -16,25 +16,29 @@ import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 const { hash } = bcrypt;
 
-const PROJECT_ID = "smartpos-3beb6";
+const PROJECT_ID = process.env.GCLOUD_PROJECT || "smartpos-3beb6";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const keyPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
   ?? resolve(__dirname, "../firebase-admin-key.json");
 
-if (!existsSync(keyPath)) {
+// If emulator env vars are set, initialize without credentials
+if (process.env.FIRESTORE_EMULATOR_HOST) {
+  console.log("Using Firebase emulators...");
+  initializeApp({ projectId: PROJECT_ID });
+} else if (!existsSync(keyPath)) {
   console.error("No service account key found.");
   console.error("   Download one from Firebase Console:");
   console.error("   Project Settings > Service Accounts > Generate new private key");
   console.error("   Save it as: firebase-admin-key.json (in project root)");
   process.exit(1);
+} else {
+  const serviceAccount = JSON.parse(readFileSync(keyPath, "utf8"));
+  initializeApp({
+    credential: cert(serviceAccount),
+    projectId: PROJECT_ID,
+  });
 }
-
-const serviceAccount = JSON.parse(readFileSync(keyPath, "utf8"));
-initializeApp({
-  credential: cert(serviceAccount),
-  projectId: PROJECT_ID,
-});
 
 const auth = getAuth();
 const db = getFirestore();
@@ -55,7 +59,7 @@ async function seed() {
   // 1. Create tenant
   console.log("\nCreating tenant...");
   await db.doc(`tenants/${TENANT_ID}`).set({
-    name: "SwiftPMS Demo Hotel",
+    name: "Tshukudu Bush Lodge",
     settings: {
       currency: "ZAR",
       timezone: "Africa/Johannesburg",
@@ -68,60 +72,100 @@ async function seed() {
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  // 2. Create property
-  console.log("Creating property...");
-  await db.doc(`tenants/${TENANT_ID}/properties/${PROPERTY_ID}`).set({
-    name: "SwiftPMS Demo Hotel",
-    address: "123 Hospitality Ave, Cape Town",
-    phone: "+27 21 555 0100",
-    email: "info@swiftpms.demo",
-    description: "A modern boutique hotel in the heart of Cape Town",
-    imageUrls: [],
-    amenities: ["wifi", "pool", "parking", "restaurant", "gym", "spa"],
-    checkInTime: "14:00",
-    checkOutTime: "11:00",
-    isActive: true,
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
-  });
+  // 2. Create properties (3 lodges)
+  console.log("Creating properties...");
+  const lodges = [
+    {
+      id: PROPERTY_ID,
+      name: "Lodge 1 — Bush Camp",
+      address: "Tshukudu Game Reserve, Limpopo",
+      phone: "+27 14 555 0101",
+      email: "lodge1@tshukudu.demo",
+      description: "A classic bush camp experience with comfortable tented accommodation, perfect for first-time safari visitors. Affordable rates with all the essentials.",
+      imageUrls: ["/images/lodge/tented-camp-interior.jpeg"],
+      amenities: ["parking", "bush_walks", "game_drives", "braai"],
+    },
+    {
+      id: "property_lodge2",
+      name: "Lodge 2 — River Lodge",
+      address: "Tshukudu Game Reserve, Limpopo",
+      phone: "+27 14 555 0102",
+      email: "lodge2@tshukudu.demo",
+      description: "Upper-tier lodge overlooking the river with thatched chalets, private decks, and a rim-flow pool. Ideal for couples and families seeking comfort in the bush.",
+      imageUrls: ["/images/lodge/pool-sunset.jpeg"],
+      amenities: ["wifi", "pool", "parking", "restaurant", "game_drives", "spa"],
+    },
+    {
+      id: "property_lodge3",
+      name: "Lodge 3 — Royal Reserve",
+      address: "Tshukudu Game Reserve, Limpopo",
+      phone: "+27 14 555 0103",
+      email: "lodge3@tshukudu.demo",
+      description: "Super-luxury private reserve with exclusive suites, personal butler service, heated plunge pools, and world-class cuisine. The pinnacle of safari living.",
+      imageUrls: ["/images/lodge/lodge3-lounge.jpeg"],
+      amenities: ["wifi", "pool", "parking", "fine_dining", "butler", "spa", "gym", "private_vehicle", "cellar"],
+    },
+  ];
+
+  for (const lodge of lodges) {
+    const { id, ...data } = lodge;
+    await db.doc(`tenants/${TENANT_ID}/properties/${id}`).set({
+      ...data,
+      checkInTime: "14:00",
+      checkOutTime: "11:00",
+      isActive: true,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
 
   // 3. Create room types
   console.log("Creating room types...");
   const roomTypes = [
     {
-      id: "rt_standard",
-      name: "Standard Room",
-      code: "STD",
-      description: "Comfortable room with all essential amenities",
-      baseRate: 125000, // R1,250.00/night
+      id: "rt_tented",
+      name: "Tented Camp",
+      code: "TTC",
+      description: "Luxury safari tent with en-suite outdoor bathroom, immersed in the African bush",
+      baseRate: 195000, // R1,950.00/night
       maxOccupancy: 2,
-      bedConfiguration: "1 Queen Bed",
-      amenities: ["wifi", "tv", "aircon", "minibar"],
-      imageUrls: [],
+      bedConfiguration: "1 King Bed",
+      amenities: ["aircon", "outdoor_bath", "bush_view", "minibar"],
+      imageUrls: [
+        "/images/lodge/tented-camp-interior.jpeg",
+        "/images/lodge/tented-camp-bathroom.jpeg",
+      ],
       isActive: true,
     },
     {
-      id: "rt_deluxe",
-      name: "Deluxe Room",
-      code: "DLX",
-      description: "Spacious room with city views and premium amenities",
-      baseRate: 195000, // R1,950.00/night
+      id: "rt_chalet",
+      name: "Bush Chalet",
+      code: "BCH",
+      description: "Thatched-roof chalet with mosquito net canopy and private deck overlooking the bush",
+      baseRate: 275000, // R2,750.00/night
       maxOccupancy: 3,
       bedConfiguration: "1 King Bed",
-      amenities: ["wifi", "tv", "aircon", "minibar", "balcony", "coffee_machine"],
-      imageUrls: [],
+      amenities: ["aircon", "wifi", "coffee_machine", "minibar", "private_deck", "bush_view"],
+      imageUrls: [
+        "/images/lodge/chalet-interior.jpeg",
+        "/images/lodge/chalet-exterior.jpeg",
+        "/images/lodge/bathroom.jpeg",
+      ],
       isActive: true,
     },
     {
       id: "rt_suite",
-      name: "Executive Suite",
+      name: "Lodge Suite",
       code: "STE",
-      description: "Luxury suite with separate living area and panoramic views",
-      baseRate: 350000, // R3,500.00/night
+      description: "Premium suite with private lounge, pool access, and panoramic bushveld views",
+      baseRate: 450000, // R4,500.00/night
       maxOccupancy: 4,
-      bedConfiguration: "1 King Bed + Sofa Bed",
-      amenities: ["wifi", "tv", "aircon", "minibar", "balcony", "coffee_machine", "jacuzzi", "lounge"],
-      imageUrls: [],
+      bedConfiguration: "1 King Bed + Daybed",
+      amenities: ["aircon", "wifi", "pool", "minibar", "private_deck", "bush_view", "lounge", "coffee_machine"],
+      imageUrls: [
+        "/images/lodge/lodge-lounge.jpeg",
+        "/images/lodge/pool-sunset.jpeg",
+      ],
       isActive: true,
     },
   ];
@@ -138,16 +182,16 @@ async function seed() {
   // 4. Create rooms
   console.log("Creating rooms...");
   const rooms = [
-    { id: "room_101", roomNumber: "101", roomTypeId: "rt_standard", floor: 1 },
-    { id: "room_102", roomNumber: "102", roomTypeId: "rt_standard", floor: 1 },
-    { id: "room_103", roomNumber: "103", roomTypeId: "rt_standard", floor: 1 },
-    { id: "room_201", roomNumber: "201", roomTypeId: "rt_deluxe", floor: 2 },
-    { id: "room_202", roomNumber: "202", roomTypeId: "rt_deluxe", floor: 2 },
-    { id: "room_203", roomNumber: "203", roomTypeId: "rt_deluxe", floor: 2 },
-    { id: "room_301", roomNumber: "301", roomTypeId: "rt_suite", floor: 3 },
-    { id: "room_302", roomNumber: "302", roomTypeId: "rt_suite", floor: 3 },
-    { id: "room_104", roomNumber: "104", roomTypeId: "rt_standard", floor: 1 },
-    { id: "room_204", roomNumber: "204", roomTypeId: "rt_deluxe", floor: 2 },
+    { id: "room_tent1", roomNumber: "Tent 1 - Kudu", roomTypeId: "rt_tented", floor: 1 },
+    { id: "room_tent2", roomNumber: "Tent 2 - Impala", roomTypeId: "rt_tented", floor: 1 },
+    { id: "room_tent3", roomNumber: "Tent 3 - Nyala", roomTypeId: "rt_tented", floor: 1 },
+    { id: "room_tent4", roomNumber: "Tent 4 - Sable", roomTypeId: "rt_tented", floor: 1 },
+    { id: "room_chalet1", roomNumber: "Chalet 1 - Marula", roomTypeId: "rt_chalet", floor: 1 },
+    { id: "room_chalet2", roomNumber: "Chalet 2 - Tamboti", roomTypeId: "rt_chalet", floor: 1 },
+    { id: "room_chalet3", roomNumber: "Chalet 3 - Leadwood", roomTypeId: "rt_chalet", floor: 1 },
+    { id: "room_suite1", roomNumber: "Rhino Suite", roomTypeId: "rt_suite", floor: 1 },
+    { id: "room_suite2", roomNumber: "Elephant Suite", roomTypeId: "rt_suite", floor: 1 },
+    { id: "room_suite3", roomNumber: "Lion Suite", roomTypeId: "rt_suite", floor: 1 },
   ];
 
   for (const room of rooms) {
@@ -178,14 +222,14 @@ async function seed() {
   await auth.setCustomUserClaims(adminRecord.uid, {
     tenantId: TENANT_ID,
     role: "super_admin",
-    propertyIds: [PROPERTY_ID],
+    propertyIds: [PROPERTY_ID, "property_lodge2", "property_lodge3"],
   });
   await db.doc(`tenants/${TENANT_ID}/users/${adminRecord.uid}`).set({
     email: ADMIN_EMAIL,
     fullName: "Hotel Admin",
     role: "super_admin",
     pinHash: adminPin,
-    propertyIds: [PROPERTY_ID],
+    propertyIds: [PROPERTY_ID, "property_lodge2", "property_lodge3"],
     isActive: true,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -207,14 +251,14 @@ async function seed() {
   await auth.setCustomUserClaims(fdRecord.uid, {
     tenantId: TENANT_ID,
     role: "front_desk",
-    propertyIds: [PROPERTY_ID],
+    propertyIds: [PROPERTY_ID, "property_lodge2", "property_lodge3"],
   });
   await db.doc(`tenants/${TENANT_ID}/users/${fdRecord.uid}`).set({
     email: FRONTDESK_EMAIL,
     fullName: "Front Desk Staff",
     role: "front_desk",
     pinHash: fdPin,
-    propertyIds: [PROPERTY_ID],
+    propertyIds: [PROPERTY_ID, "property_lodge2", "property_lodge3"],
     isActive: true,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
@@ -253,8 +297,8 @@ async function seed() {
   const res1Ref = db.doc(`tenants/${TENANT_ID}/properties/${PROPERTY_ID}/reservations/res_1`);
   await res1Ref.set({
     guestId: "guest_1",
-    roomId: "room_201",
-    roomTypeId: "rt_deluxe",
+    roomId: "room_chalet1",
+    roomTypeId: "rt_chalet",
     checkInDate: today,
     checkOutDate: tomorrow,
     nightCount: 1,
@@ -278,7 +322,7 @@ async function seed() {
   });
 
   // Update room 201 as occupied
-  await db.doc(`tenants/${TENANT_ID}/properties/${PROPERTY_ID}/rooms/room_201`).update({
+  await db.doc(`tenants/${TENANT_ID}/properties/${PROPERTY_ID}/rooms/room_chalet1`).update({
     status: "occupied",
     currentReservationId: "res_1",
   });
