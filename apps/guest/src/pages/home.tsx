@@ -22,7 +22,8 @@ export function HomePage() {
 
   const [checkIn, setCheckIn] = useState(today);
   const [checkOut, setCheckOut] = useState(tomorrow);
-  const [adults, setAdults] = useState(1);
+  const [adults, setAdults] = useState(2);
+  const [children, setChildren] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   function handleSearch() {
@@ -36,7 +37,7 @@ export function HomePage() {
     }
     setError(null);
     setDates(checkIn, checkOut);
-    setGuests(adults, 0);
+    setGuests(adults, children);
     navigate("/rooms");
   }
 
@@ -65,7 +66,7 @@ export function HomePage() {
 
           {/* Search Card */}
           <div className="rounded-xl bg-white p-6 shadow-xl sm:p-8">
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="checkin" className="text-left text-sm font-medium text-foreground">
                   Check-in
@@ -96,7 +97,7 @@ export function HomePage() {
               </div>
               <div className="flex flex-col gap-1.5">
                 <label htmlFor="adults" className="text-left text-sm font-medium text-foreground">
-                  Guests
+                  Adults
                 </label>
                 <select
                   id="adults" value={adults}
@@ -105,6 +106,20 @@ export function HomePage() {
                 >
                   {[1, 2, 3, 4, 5, 6].map((n) => (
                     <option key={n} value={n}>{n} {n === 1 ? "Adult" : "Adults"}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="children" className="text-left text-sm font-medium text-foreground">
+                  Children
+                </label>
+                <select
+                  id="children" value={children}
+                  onChange={(e) => setChildren(Number(e.target.value))}
+                  className="rounded-lg border border-border px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+                >
+                  {[0, 1, 2, 3, 4].map((n) => (
+                    <option key={n} value={n}>{n} {n === 1 ? "Child" : "Children"}</option>
                   ))}
                 </select>
               </div>
@@ -135,7 +150,7 @@ export function HomePage() {
                 onClick={() => {
                   if (checkIn && checkOut) {
                     setDates(checkIn, checkOut);
-                    setGuests(adults, 0);
+                    setGuests(adults, children);
                   }
                   navigate("/rooms");
                 }}
