@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useUIStore } from "@/stores/ui.store";
 import { useBookingStore } from "@/stores/booking.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
+import { getPropertyInfo, getRoomTypeName, type PropertyInfo } from "@/services/property";
 import { downloadBookingPdf } from "@/lib/booking-pdf";
 import type { Reservation } from "@swiftpms/shared";
 
@@ -11,6 +12,7 @@ export function ConfirmationPage() {
   const checkOutDate = useBookingStore((s) => s.checkOutDate);
   const adults = useBookingStore((s) => s.adults);
   const children = useBookingStore((s) => s.children);
+  const selectedPropertyId = useBookingStore((s) => s.selectedPropertyId);
   const selectedRoomTypeId = useBookingStore((s) => s.selectedRoomTypeId);
   const resetBooking = useBookingStore((s) => s.reset);
   const firstName = useGuestAuthStore((s) => s.firstName);
@@ -18,10 +20,23 @@ export function ConfirmationPage() {
   const email = useGuestAuthStore((s) => s.email);
   const guestId = useGuestAuthStore((s) => s.guestId);
 
+  const [propInfo, setPropInfo] = useState<PropertyInfo | null>(null);
+  const [rtName, setRtName] = useState<string>("");
+
   // Guard: redirect if no booking data
   useEffect(() => {
     if (!checkInDate || !checkOutDate) navigate("/");
   }, [checkInDate, checkOutDate, navigate]);
+
+  // Load property and room type info for the download
+  useEffect(() => {
+    if (selectedPropertyId) {
+      getPropertyInfo(selectedPropertyId).then(setPropInfo).catch(() => {});
+    }
+    if (selectedRoomTypeId) {
+      getRoomTypeName(selectedRoomTypeId).then(setRtName).catch(() => {});
+    }
+  }, [selectedPropertyId, selectedRoomTypeId]);
 
   function nightCount(): number {
     if (!checkInDate || !checkOutDate) return 0;
@@ -66,6 +81,14 @@ export function ConfirmationPage() {
       reservation: mockReservation,
       guestName: `${firstName ?? ""} ${lastName ?? ""}`.trim() || "Guest",
       guestEmail: email ?? "",
+      propertyName: propInfo?.name,
+      propertyAddress: propInfo?.address ?? undefined,
+      propertyPhone: propInfo?.phone ?? undefined,
+      propertyEmail: propInfo?.email ?? undefined,
+      roomTypeName: rtName || undefined,
+      amenities: propInfo?.amenities,
+      checkInTime: propInfo?.checkInTime,
+      checkOutTime: propInfo?.checkOutTime,
     });
   }
 

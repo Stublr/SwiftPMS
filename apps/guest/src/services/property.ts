@@ -53,6 +53,12 @@ function mapProperty(id: string, data: Record<string, unknown>): PropertyInfo {
   };
 }
 
+export async function getRoomTypeName(roomTypeId: string): Promise<string> {
+  const snap = await getDoc(doc(db, `tenants/${TENANT_ID}/roomTypes/${roomTypeId}`));
+  if (!snap.exists()) return "Room";
+  return (snap.data().name as string) ?? "Room";
+}
+
 export function getTenantId(): string {
   return TENANT_ID;
 }

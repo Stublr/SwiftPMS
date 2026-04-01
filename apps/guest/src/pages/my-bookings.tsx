@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { getMyBookings } from "@/services/booking";
+import { getPropertyInfo, getRoomTypeName, type PropertyInfo } from "@/services/property";
 import { downloadBookingPdf } from "@/lib/booking-pdf";
 import { formatCents } from "@swiftpms/shared";
 import type { Reservation } from "@swiftpms/shared";
@@ -23,6 +24,8 @@ export function MyBookingsPage() {
   const [bookings, setBookings] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [propertyCache, setPropertyCache] = useState<Map<string, PropertyInfo>>(new Map());
+  const [roomTypeCache, setRoomTypeCache] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -38,6 +41,28 @@ export function MyBookingsPage() {
     try {
       const data = await getMyBookings();
       setBookings(data);
+
+      // Pre-fetch property and room type info for all bookings
+      const propIds = [...new Set(data.map((b) => b.propertyId))];
+      const rtIds = [...new Set(data.map((b) => b.roomTypeId))];
+
+      const propMap = new Map<string, PropertyInfo>();
+      for (const pid of propIds) {
+        try {
+          const info = await getPropertyInfo(pid);
+          propMap.set(pid, info);
+        } catch { /* skip */ }
+      }
+      setPropertyCache(propMap);
+
+      const rtMap = new Map<string, string>();
+      for (const rtId of rtIds) {
+        try {
+          const name = await getRoomTypeName(rtId);
+          rtMap.set(rtId, name);
+        } catch { /* skip */ }
+      }
+      setRoomTypeCache(rtMap);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to load bookings.",
@@ -50,6 +75,26 @@ export function MyBookingsPage() {
   function nightCount(ci: string, co: string): number {
     const diff = new Date(co).getTime() - new Date(ci).getTime();
     return Math.max(1, Math.round(diff / 86400000));
+  }
+
+  function handleDownload(booking: Reservation) {
+    const prop = propertyCache.get(booking.propertyId);
+    const rtName = roomTypeCache.get(booking.roomTypeId);
+
+    downloadBookingPdf({
+      reservation: booking,
+      guestName: firstName ?? "Guest",
+      guestEmail: useGuestAuthStore.getState().email ?? "",
+      propertyName: prop?.name,
+      propertyAddress: prop?.address ?? undefined,
+      propertyPhone: prop?.phone ?? undefined,
+      propertyEmail: prop?.email ?? undefined,
+      roomTypeName: rtName,
+      roomNumber: booking.roomId ?? undefined,
+      amenities: prop?.amenities,
+      checkInTime: prop?.checkInTime,
+      checkOutTime: prop?.checkOutTime,
+    });
   }
 
   return (
@@ -73,21 +118,18 @@ export function MyBookingsPage() {
         </button>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center py-16">
           <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
         </div>
       )}
 
-      {/* Error */}
       {error && (
         <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      {/* Empty State */}
       {!loading && !error && bookings.length === 0 && (
         <div className="rounded-xl border border-border bg-white py-16 text-center shadow-sm">
           <svg
@@ -115,7 +157,6 @@ export function MyBookingsPage() {
         </div>
       )}
 
-      {/* Booking Cards */}
       <div className="space-y-4">
         {bookings.map((booking) => {
           const nights = nightCount(booking.checkInDate, booking.checkOutDate);
@@ -124,6 +165,8 @@ export function MyBookingsPage() {
             text: "text-gray-600",
             label: booking.status,
           };
+          const rtName = roomTypeCache.get(booking.roomTypeId);
+          const prop = propertyCache.get(booking.propertyId);
 
           return (
             <div
@@ -135,21 +178,14 @@ export function MyBookingsPage() {
                   <div>
                     <p className="text-xs text-muted-foreground">
                       Reservation #{booking.id.slice(0, 8).toUpperCase()}
+                      {prop ? ` — ${prop.name}` : ""}
                     </p>
-                    <p className="mt-0.5 text-sm text-muted-foreground">
-                      Booked{" "}
-                      {(() => {
-                        const ca = booking.createdAt as unknown;
-                        if (ca && typeof ca === "object" && "seconds" in (ca as Record<string, unknown>)) {
-                          return new Date((ca as { seconds: number }).seconds * 1000);
-                        }
-                        return new Date(booking.createdAt);
-                      })().toLocaleDateString("en-ZA", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </p>
+                    {rtName && (
+                      <p className="mt-0.5 text-sm font-medium text-foreground">
+                        {rtName}
+                        {booking.roomId ? ` — ${booking.roomId}` : ""}
+                      </p>
+                    )}
                   </div>
                   <span
                     className={cn(
@@ -214,13 +250,7 @@ export function MyBookingsPage() {
 
                 <div className="mt-3 flex justify-end border-t border-border pt-3">
                   <button
-                    onClick={() =>
-                      downloadBookingPdf({
-                        reservation: booking,
-                        guestName: firstName ?? "Guest",
-                        guestEmail: useGuestAuthStore.getState().email ?? "",
-                      })
-                    }
+                    onClick={() => handleDownload(booking)}
                     className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
