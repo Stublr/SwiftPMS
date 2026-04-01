@@ -1,22 +1,21 @@
-# SmartPOS
+# SwiftPMS
 
-Cloud-based Point of Sale system with a React PWA terminal and Flutter mobile owner dashboard.
+Lightweight cloud-based Hotel Property Management System with a front desk staff app and guest booking portal.
 
 ## Architecture
 
 ```
-smartpos/
+swiftpms/
 ├── apps/
-│   ├── api/        # Fastify 5 REST API + Socket.IO
-│   ├── pos/        # React 19 PWA (POS terminal)
-│   └── mobile/     # Flutter (Owner Dashboard) — not yet scaffolded
+│   ├── frontdesk/    # React 19 — Front desk staff app
+│   └── guest/        # React 19 — Guest booking portal
 ├── packages/
-│   ├── shared/     # Zod schemas, TypeScript types, utilities
-│   ├── db/         # Drizzle ORM schema, migrations, seeds
+│   ├── shared/       # Zod schemas, TypeScript types, constants, utilities
+│   ├── functions/    # Firebase Cloud Functions (backend API)
 │   ├── eslint-config/
 │   └── tsconfig/
-├── docker/         # Docker Compose (Postgres, Redis, MinIO)
-└── scripts/        # setup.sh, reset-db.sh
+├── firebase/         # Firestore rules, indexes, storage rules
+└── scripts/          # Seed script, deploy helpers
 ```
 
 ## Tech Stack
@@ -24,86 +23,68 @@ smartpos/
 | Layer | Technology |
 |-------|-----------|
 | Monorepo | Turborepo + pnpm 9 |
-| Backend | Fastify 5, TypeScript, Drizzle ORM |
-| Database | PostgreSQL 16 (with Row-Level Security) |
-| Cache | Redis 7 |
-| Object Storage | MinIO (S3-compatible) |
-| POS Frontend | React 19, Vite 6, Zustand, TanStack Query, Tailwind CSS 4 |
-| Mobile | Flutter + Riverpod |
-| Auth | JWT (access + refresh tokens) + PIN login for cashiers |
-| Real-time | Socket.IO |
-| Offline | Service Worker (Workbox), IndexedDB (Dexie.js) |
+| Backend | Firebase Cloud Functions v2 (Node 22) |
+| Database | Cloud Firestore (multi-tenant, path-based isolation) |
+| Auth | Firebase Auth (email/password + PIN for staff, full accounts for guests) |
+| Front Desk App | React 19, Vite 6, Zustand 5, Tailwind CSS 4 |
+| Guest Portal | React 19, Vite 6, Zustand 5, Tailwind CSS 4 |
+| Email | Resend (when API key configured) |
+| Hosting | Firebase Hosting (two targets: frontdesk + guest) |
 
 ## Prerequisites
 
 - **Node.js** >= 22 ([download](https://nodejs.org))
 - **pnpm** >= 9 (`npm install -g pnpm@9`)
-- **Docker** & Docker Compose ([download](https://www.docker.com))
+- **Firebase CLI** (`npm install -g firebase-tools`)
 - **Git**
-
-For the mobile app, you also need:
-- **Flutter** >= 3.22 ([install guide](https://docs.flutter.dev/get-started/install))
-- **Android Studio** or **Xcode** (for emulators)
 
 ## Quick Start
 
 ### 1. Clone and install
 
 ```bash
-git clone <repository-url> smartpos
-cd smartpos
+git clone https://github.com/HendrikPlankton/SwiftPMS.git
+cd SwiftPMS
 pnpm install
 ```
 
-### 2. Start infrastructure
+### 2. Configure environment
+
+Copy the example for the front desk app:
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d
+cp apps/frontdesk/.env.example apps/frontdesk/.env
 ```
 
-This starts:
-- **PostgreSQL 16** on port 5432
-- **Redis 7** on port 6379
-- **MinIO** on port 9000 (console on 9001)
+Create `apps/guest/.env` for the guest portal:
 
-### 3. Configure environment
-
-```bash
-cp apps/api/.env.example apps/api/.env
-cp apps/pos/.env.example apps/pos/.env
+```env
+VITE_FIREBASE_API_KEY=your_key
+VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your-project
+VITE_FIREBASE_STORAGE_BUCKET=your-project.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_id
+VITE_FIREBASE_APP_ID=your_app_id
+VITE_TENANT_ID=tenant_demo
+VITE_PROPERTY_ID=property_main
 ```
 
-The defaults work out of the box for local development. Edit `apps/api/.env` if you need to change any values.
+Optional: `VITE_GOOGLE_MAPS_API_KEY=your_key` for address autocomplete on the guest form.
 
-**API environment variables** (`apps/api/.env`):
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://smartpos:smartpos_dev@localhost:5432/smartpos_dev` | PostgreSQL connection string |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection string |
-| `JWT_ACCESS_SECRET` | — | Minimum 32 characters. Change for production. |
-| `JWT_REFRESH_SECRET` | — | Minimum 32 characters. Change for production. |
-| `CORS_ORIGIN` | `http://localhost:5173` | Allowed CORS origin |
-| `PORT` | `3000` | API server port |
-| `LOG_LEVEL` | `debug` | Pino log level |
-
-**POS environment variables** (`apps/pos/.env`):
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VITE_API_URL` | `http://localhost:3000/v1` | API base URL |
-
-### 4. Set up the database
+### 3. Start Firebase emulators
 
 ```bash
-# Build shared packages first (DB schema depends on them)
-pnpm build --filter="./packages/*"
+pnpm emulators
+```
 
-# Run migrations
-pnpm db:migrate
+Starts Auth (9099), Firestore (8080), Functions (5001), and Emulator UI (4400).
 
-# Seed with demo data (1 tenant, 1 branch, demo users)
-pnpm db:seed
+### 4. Seed demo data
+
+In a separate terminal:
+
+```bash
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 npx tsx scripts/seed-firebase.ts
 ```
 
 ### 5. Start development servers
@@ -112,149 +93,101 @@ pnpm db:seed
 pnpm dev
 ```
 
-This starts both the API and POS dev servers concurrently:
-- **API**: http://localhost:3000
-- **POS**: http://localhost:5173
-- **Health check**: http://localhost:3000/health
+| App | URL | Description |
+|-----|-----|-------------|
+| Front Desk | http://localhost:5173 | Staff operations |
+| Guest Portal | http://localhost:5174 | Guest bookings |
+| Emulator UI | http://127.0.0.1:4400 | Firebase dashboard |
 
-To start them individually:
-
-```bash
-pnpm --filter @smartpos/api dev    # API only
-pnpm --filter @smartpos/pos dev    # POS only
-```
-
-### One-command setup
-
-Alternatively, run the setup script which does steps 2-5 automatically:
+Start individually:
 
 ```bash
-bash scripts/setup.sh
+pnpm --filter @swiftpms/frontdesk dev   # Front desk only
+pnpm --filter @swiftpms/guest dev       # Guest portal only
 ```
 
 ## Demo Credentials
 
-After seeding, the following accounts are available:
-
 | Role | Email | Password | PIN |
 |------|-------|----------|-----|
-| Super Admin | admin@smartpos.dev | admin123 | — |
-| Branch Manager | manager@smartpos.dev | manager123 | — |
-| Cashier | cashier@smartpos.dev | cashier123 | 1234 |
+| Super Admin | admin@swiftpms.demo | admin123! | 1234 |
+| Front Desk | frontdesk@swiftpms.demo | frontdesk123! | 5678 |
 
-## Common Commands
+## Front Desk App
+
+Staff app at http://localhost:5173 for managing hotel operations.
+
+| Page | Path | Description |
+|------|------|-------------|
+| Dashboard | `/` | Occupancy, arrivals/departures, revenue, room status |
+| Room Board | `/rooms` | Visual room grid colour-coded by status |
+| Reservations | `/reservations` | Create, check-in, check-out, cancel reservations |
+| Guests | `/guests` | Guest directory with country dropdown, phone prefix, companions |
+| Reports | `/reports` | Occupancy and revenue reports |
+| Room Setup | `/admin/rooms` | Room types and individual rooms |
+| Properties | `/admin/properties` | Hotel property management |
+| Staff | `/admin/users` | User management and roles |
+
+## Guest Portal
+
+Booking portal at http://localhost:5174 for guests.
+
+| Page | Path | Description |
+|------|------|-------------|
+| Home | `/` | Search by dates, lodge cards |
+| Rooms | `/rooms` | Available room types with pricing |
+| Booking | `/booking` | Book a room, create account |
+| Confirmation | `/confirmation` | Success + PDF download |
+| My Bookings | `/my-bookings` | View bookings + download confirmations |
+| Login | `/login` | Guest login/register |
+
+## Cloud Functions
+
+| Category | Functions |
+|----------|----------|
+| Auth | createUser, pinLogin, assignUserRole |
+| Reservations | createReservation, cancelReservation, checkIn, checkOut |
+| Billing | addCharge, processPayment |
+| Rooms | updateRoomStatus |
+| Guest Portal | createGuestAccount, checkAvailability, createGuestReservation |
+| Triggers | onReservationUpdate, releaseExpiredHolds |
+
+## Firestore Data Model
+
+```
+tenants/{tenantId}/
+  users/{userId}
+  guests/{guestId}          — includes companions[] array
+  roomTypes/{roomTypeId}
+  auditLog/{logId}
+  properties/{propertyId}/
+    rooms/{roomId}
+    reservations/{reservationId}
+    folios/{folioId}
+    dailyAggregates/{date}
+```
+
+## Commands
 
 ```bash
-# Development
-pnpm dev                          # Start all dev servers
-pnpm build                        # Build everything
-pnpm test                         # Run all tests
-pnpm lint                         # Lint all packages
-pnpm type-check                   # TypeScript type checking
-
-# Database
-pnpm db:migrate                   # Run pending migrations
-pnpm db:seed                      # Seed demo data
-pnpm db:generate                  # Generate migration from schema changes
-bash scripts/reset-db.sh          # Drop and recreate database
-
-# Individual packages
-pnpm --filter @smartpos/api dev   # API dev server
-pnpm --filter @smartpos/pos dev   # POS dev server
-pnpm --filter @smartpos/api test  # API tests only
-pnpm --filter @smartpos/pos test  # POS tests only
-
-# Infrastructure
-docker compose -f docker/docker-compose.yml up -d    # Start services
-docker compose -f docker/docker-compose.yml down      # Stop services
-docker compose -f docker/docker-compose.yml logs -f   # View logs
-
-# Cleanup
-pnpm clean                        # Remove all build artifacts + node_modules
+pnpm dev                                 # Start all dev servers
+pnpm build                               # Build monorepo
+pnpm emulators                           # Start Firebase emulators
+pnpm --filter @swiftpms/frontdesk dev    # Front desk only
+pnpm --filter @swiftpms/guest dev        # Guest portal only
+pnpm --filter @swiftpms/shared build     # Build shared package
+pnpm --filter @swiftpms/functions build  # Build cloud functions
+pnpm clean                               # Remove build artifacts
 ```
 
-## Project Structure
+## Deploy
 
-### API Modules (`apps/api/src/modules/`)
-
-Each feature follows a vertical slice pattern:
-
+```bash
+firebase deploy                          # Deploy everything
+firebase deploy --only functions         # Functions only
+firebase deploy --only hosting           # Both hosting targets
+firebase deploy --only firestore:rules   # Firestore rules
 ```
-modules/{feature}/
-├── {feature}.repository.ts   # Data access (Drizzle queries)
-├── {feature}.service.ts      # Business logic
-├── {feature}.routes.ts       # Fastify route handlers
-└── {feature}.test.ts         # Vitest tests
-```
-
-| Module | Endpoints | Description |
-|--------|-----------|-------------|
-| auth | `/v1/auth/*` | Login (email + PIN), token refresh, logout |
-| users | `/v1/users/*` | User CRUD, role assignment, PIN reset |
-| branches | `/v1/branches/*` | Branch CRUD |
-| categories | `/v1/categories/*` | Product category CRUD |
-| products | `/v1/products/*` | Product CRUD, barcode lookup |
-| inventory | `/v1/inventory/*` | Stock levels, adjustments, movements |
-| registers | `/v1/registers/*` | Open/close register, shift summary |
-| transactions | `/v1/transactions/*` | Sale creation, void, history |
-| reports | `/v1/reports/*` | Sales, products, cashiers, payments |
-
-### POS Pages (`apps/pos/src/pages/`)
-
-| Page | Route | Description |
-|------|-------|-------------|
-| Login | — | Email/password and PIN login |
-| Register Select | — | Branch and register selection |
-| Register Open | — | Enter opening float |
-| Dashboard | `/` | Today's revenue, transactions, system status |
-| POS Terminal | `/pos` | Product grid + cart + checkout |
-| Products | `/admin/products` | Product management (CRUD) |
-| Categories | `/admin/categories` | Category management |
-| Reports | `/admin/reports` | Sales, top products, cashiers, payments |
-| Users | `/admin/users` | User management, role assignment |
-| Branches | `/admin/branches` | Branch management |
-| Register Close | — | Cash count, variance calculation |
-
-### Shared Package (`packages/shared/`)
-
-- **Types**: TypeScript interfaces for all entities
-- **Schemas**: Zod validation schemas shared between API and POS
-- **Utils**: `roundMoney()`, `formatMoney()`, `parseMoney()`, tax and discount calculators
-- **Constants**: Roles, payment methods, transaction types
-
-## Offline Support
-
-The POS app works offline with:
-
-- **Service Worker** (Workbox): Precaches app shell and static assets
-- **API Caching**: Product and category API responses cached for 24 hours
-- **IndexedDB** (Dexie.js): Full product catalog stored locally for offline search
-- **Sync Queue**: Transactions created offline are queued and synced when connectivity returns
-- **Offline ID**: Each offline transaction gets a UUID for server-side deduplication
-
-## Real-time Updates
-
-Socket.IO runs on the API server at path `/ws`:
-
-- Clients join a room by `branchId` on connect
-- Server emits `transaction:created` and `transaction:voided` events
-- POS header shows an online/offline connectivity indicator
-
-## CI/CD
-
-GitHub Actions workflow (`.github/workflows/ci.yml`) runs on every push/PR to `main` or `develop`:
-
-1. **Lint & Type Check** — ESLint + `tsc --noEmit`
-2. **Tests** — Vitest across all packages
-3. **Build** — Full production build
-
-## Key Design Decisions
-
-- **Monetary values**: Stored as `DECIMAL(12,2)` in PostgreSQL, transferred as strings in JSON, calculated with `roundMoney()` to avoid floating-point errors
-- **Tenant isolation**: PostgreSQL Row-Level Security (RLS) policies
-- **Auth**: Short-lived JWT access tokens (15 min) + long-lived refresh tokens (7 days). PIN login produces shift-scoped tokens (8 hours)
-- **Migrations**: Manually controlled SQL via Drizzle Kit (required for RLS policies)
-- **ESM**: The entire codebase uses ES modules with `.js` extensions in imports
 
 ## License
 
