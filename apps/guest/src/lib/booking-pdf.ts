@@ -34,6 +34,67 @@ function statusLabel(s: string): string {
   return { confirmed: "Confirmed", checked_in: "Checked In", checked_out: "Checked Out", cancelled: "Cancelled", no_show: "No Show" }[s] ?? s;
 }
 
+/**
+ * Generate a simple QR code as an SVG string.
+ * Uses a basic encoding — will be replaced with real QR payload later.
+ * For now renders a deterministic pattern based on the input text.
+ */
+function generateMockQrSvg(text: string, size: number = 80): string {
+  // Simple hash-based pattern to simulate a QR code
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
+  }
+
+  const modules = 21; // QR version 1 = 21x21
+  const cellSize = size / modules;
+  let rects = "";
+
+  // Finder patterns (top-left, top-right, bottom-left)
+  function finderPattern(ox: number, oy: number) {
+    // Outer border
+    for (let i = 0; i < 7; i++) {
+      rects += `<rect x="${(ox + i) * cellSize}" y="${oy * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
+      rects += `<rect x="${(ox + i) * cellSize}" y="${(oy + 6) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
+      rects += `<rect x="${ox * cellSize}" y="${(oy + i) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
+      rects += `<rect x="${(ox + 6) * cellSize}" y="${(oy + i) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
+    }
+    // Inner square
+    for (let r = 2; r < 5; r++) {
+      for (let c = 2; c < 5; c++) {
+        rects += `<rect x="${(ox + c) * cellSize}" y="${(oy + r) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
+      }
+    }
+  }
+
+  finderPattern(0, 0);
+  finderPattern(14, 0);
+  finderPattern(0, 14);
+
+  // Fill data area with deterministic pattern based on hash
+  let seed = Math.abs(hash);
+  for (let row = 0; row < modules; row++) {
+    for (let col = 0; col < modules; col++) {
+      // Skip finder pattern areas
+      if ((row < 8 && col < 8) || (row < 8 && col > 12) || (row > 12 && col < 8)) continue;
+      // Timing patterns
+      if (row === 6 || col === 6) {
+        if ((row + col) % 2 === 0) {
+          rects += `<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
+        }
+        continue;
+      }
+      // Pseudo-random data modules
+      seed = ((seed * 1103515245 + 12345) >>> 0) & 0x7fffffff;
+      if (seed % 3 !== 0) {
+        rects += `<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
+      }
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="display:block;"><rect width="${size}" height="${size}" fill="white"/>${rects}</svg>`;
+}
+
 function buildHtml(data: BookingPdfData): string {
   const {
     reservation: r, guestName, guestEmail, propertyName, propertyAddress,
@@ -104,7 +165,10 @@ body{font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,
 .ib.sp{background:#f3f4f6;border:1px solid #d1d5db;}
 .ib.sp h4{font-size:10px;font-weight:700;color:#374151;margin-bottom:3px;}
 .ib.ct{background:#eff6ff;border:1px solid #bfdbfe;}
-.ft{margin-top:10px;padding-top:8px;border-top:1px solid #ddd;font-size:9px;color:#888;text-align:center;}
+.qr-wrap{float:right;margin:0 0 8px 12px;text-align:center;}
+.qr-wrap svg{border:1px solid #e0e0e0;border-radius:4px;padding:4px;}
+.qr-label{font-size:7px;color:#888;margin-top:2px;text-transform:uppercase;letter-spacing:.5px;}
+.ft{margin-top:10px;padding-top:8px;border-top:1px solid #ddd;font-size:9px;color:#888;text-align:center;clear:both;}
 @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.p{max-width:none;}}
 </style></head><body><div class="p">
 <div class="hdr"><div><div class="brand">${propertyName ?? "SwiftPMS"}</div></div>
@@ -129,7 +193,8 @@ body{font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,
 <div style="font-size:9px;color:#888;margin-top:2px;">Rate per night: ${rate}</div>
 </div>
 
-<div class="rs"><h3>${roomTypeName ?? "Room"}${roomNumber ? ` \u2014 ${roomNumber}` : ""}</h3>
+<div class="rs"><div class="qr-wrap">${generateMockQrSvg(`SWIFTPMS:${refId}`, 72)}<div class="qr-label">Scan at check-in</div></div>
+<h3>${roomTypeName ?? "Room"}${roomNumber ? ` \u2014 ${roomNumber}` : ""}</h3>
 <div class="rm"><b>Guest name:</b> ${guestName}<br><b>Email:</b> ${guestEmail}<br><b>Number of guests:</b> ${guests}</div>
 ${amenityStr ? `<div class="al">${amenityStr}</div>` : ""}
 </div>
@@ -152,7 +217,7 @@ export function downloadBookingPdf(data: BookingPdfData): void {
   w.document.write(html);
   w.document.close();
   let printed = false;
-  function doPrint() { if (!printed) { printed = true; w.print(); } }
+  function doPrint() { if (!printed) { printed = true; w!.print(); } }
   w.onload = doPrint;
   setTimeout(doPrint, 600);
 }
