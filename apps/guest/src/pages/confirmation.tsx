@@ -14,6 +14,7 @@ export function ConfirmationPage() {
   const children = useBookingStore((s) => s.children);
   const selectedPropertyId = useBookingStore((s) => s.selectedPropertyId);
   const selectedRoomTypeId = useBookingStore((s) => s.selectedRoomTypeId);
+  const bookingResult = useBookingStore((s) => s.result);
   const resetBooking = useBookingStore((s) => s.reset);
   const firstName = useGuestAuthStore((s) => s.firstName);
   const lastName = useGuestAuthStore((s) => s.lastName);
@@ -49,20 +50,20 @@ export function ConfirmationPage() {
   function handleDownload() {
     if (!checkInDate || !checkOutDate) return;
 
-    const mockReservation: Reservation = {
-      id: `res_${Date.now().toString(36)}`,
-      propertyId: "",
+    const reservation: Reservation = {
+      id: bookingResult?.reservationId ?? `res_${Date.now().toString(36)}`,
+      propertyId: selectedPropertyId ?? "",
       guestId: guestId ?? "",
       roomId: null,
       roomTypeId: selectedRoomTypeId ?? "",
       checkInDate,
       checkOutDate,
-      nightCount: nights,
+      nightCount: bookingResult?.nightCount ?? nights,
       adults,
       children,
       status: "confirmed",
-      roomRate: 0,
-      totalRoomCharges: 0,
+      roomRate: bookingResult?.roomRate ?? 0,
+      totalRoomCharges: bookingResult?.totalRoomCharges ?? 0,
       specialRequests: null,
       source: "guest_portal",
       createdBy: "",
@@ -78,7 +79,7 @@ export function ConfirmationPage() {
     };
 
     downloadBookingPdf({
-      reservation: mockReservation,
+      reservation,
       guestName: `${firstName ?? ""} ${lastName ?? ""}`.trim() || "Guest",
       guestEmail: email ?? "",
       propertyName: propInfo?.name,

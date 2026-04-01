@@ -110,12 +110,14 @@ export function BookingPage() {
     }
   }
 
+  const setResult = useBookingStore((s) => s.setResult);
+
   async function handleConfirmBooking() {
     if (!guestId || !selectedRoomTypeId || !checkInDate || !checkOutDate) return;
     setSubmitting(true);
     setError(null);
     try {
-      await createBooking({
+      const bookingResult = await createBooking({
         guestId,
         roomTypeId: selectedRoomTypeId,
         checkInDate,
@@ -124,6 +126,12 @@ export function BookingPage() {
         children,
         specialRequests: specialRequests.trim() || undefined,
         propertyId: selectedPropertyId!,
+      });
+      setResult({
+        reservationId: bookingResult.id,
+        nightCount: bookingResult.nightCount,
+        roomRate: bookingResult.roomRate,
+        totalRoomCharges: bookingResult.totalRoomCharges,
       });
       navigate("/confirmation");
     } catch (err) {

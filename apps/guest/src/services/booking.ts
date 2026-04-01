@@ -20,10 +20,10 @@ export async function createBooking(data: {
   children: number;
   specialRequests?: string;
   propertyId: string;
-}): Promise<{ id: string }> {
+}): Promise<{ id: string; nightCount: number; roomRate: number; totalRoomCharges: number }> {
   const fn = httpsCallable(functions, "createGuestReservation");
   const result = await fn(data);
-  return result.data as { id: string };
+  return result.data as { id: string; nightCount: number; roomRate: number; totalRoomCharges: number };
 }
 
 export async function getMyBookings(): Promise<Reservation[]> {
