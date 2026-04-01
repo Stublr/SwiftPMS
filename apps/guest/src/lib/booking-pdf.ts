@@ -151,6 +151,8 @@ export function downloadBookingPdf(data: BookingPdfData): void {
   if (!w) { alert("Please allow popups to download the booking confirmation."); return; }
   w.document.write(html);
   w.document.close();
-  w.onload = () => w.print();
-  setTimeout(() => w.print(), 500);
+  let printed = false;
+  function doPrint() { if (!printed) { printed = true; w.print(); } }
+  w.onload = doPrint;
+  setTimeout(doPrint, 600);
 }
