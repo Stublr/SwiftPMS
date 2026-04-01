@@ -1,6 +1,18 @@
-import { Resend } from "resend";
+let _resend: import("resend").Resend | null = null;
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResend() {
+  if (!_resend) {
+    const key = process.env.RESEND_API_KEY;
+    if (!key) {
+      console.warn("RESEND_API_KEY not set — emails will be skipped");
+      return null;
+    }
+    // Dynamic require to avoid crash at module load time
+    const { Resend } = require("resend") as typeof import("resend");
+    _resend = new Resend(key);
+  }
+  return _resend;
+}
 
 const FROM_EMAIL = process.env.FROM_EMAIL || "SwiftPMS <onboarding@resend.dev>";
 
@@ -188,6 +200,12 @@ function buildBookingConfirmationHtml(data: BookingEmailData): string {
 }
 
 export async function sendBookingConfirmation(opts: BookingEmailData) {
+  const resend = getResend();
+  if (!resend) {
+    console.log(`[email] Skipped booking confirmation to ${opts.to} (no RESEND_API_KEY)`);
+    return;
+  }
+
   const html = buildBookingConfirmationHtml(opts);
 
   await resend.emails.send({
