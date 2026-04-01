@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { useUIStore } from "@/stores/ui.store";
 import { useBookingStore } from "@/stores/booking.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
+import { downloadBookingPdf } from "@/lib/booking-pdf";
+import type { Reservation } from "@swiftpms/shared";
 
 export function ConfirmationPage() {
   const navigate = useUIStore((s) => s.navigate);
@@ -9,10 +11,12 @@ export function ConfirmationPage() {
   const checkOutDate = useBookingStore((s) => s.checkOutDate);
   const adults = useBookingStore((s) => s.adults);
   const children = useBookingStore((s) => s.children);
+  const selectedRoomTypeId = useBookingStore((s) => s.selectedRoomTypeId);
   const resetBooking = useBookingStore((s) => s.reset);
   const firstName = useGuestAuthStore((s) => s.firstName);
   const lastName = useGuestAuthStore((s) => s.lastName);
   const email = useGuestAuthStore((s) => s.email);
+  const guestId = useGuestAuthStore((s) => s.guestId);
 
   // Guard: redirect if no booking data
   useEffect(() => {
@@ -26,6 +30,44 @@ export function ConfirmationPage() {
   }
 
   const nights = nightCount();
+
+  function handleDownload() {
+    if (!checkInDate || !checkOutDate) return;
+
+    const mockReservation: Reservation = {
+      id: `res_${Date.now().toString(36)}`,
+      propertyId: "",
+      guestId: guestId ?? "",
+      roomId: null,
+      roomTypeId: selectedRoomTypeId ?? "",
+      checkInDate,
+      checkOutDate,
+      nightCount: nights,
+      adults,
+      children,
+      status: "confirmed",
+      roomRate: 0,
+      totalRoomCharges: 0,
+      specialRequests: null,
+      source: "guest_portal",
+      createdBy: "",
+      checkedInAt: null,
+      checkedInBy: null,
+      checkedOutAt: null,
+      checkedOutBy: null,
+      cancelledAt: null,
+      cancelledBy: null,
+      cancelReason: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    downloadBookingPdf({
+      reservation: mockReservation,
+      guestName: `${firstName ?? ""} ${lastName ?? ""}`.trim() || "Guest",
+      guestEmail: email ?? "",
+    });
+  }
 
   function handleViewBookings() {
     resetBooking();
@@ -137,6 +179,15 @@ export function ConfirmationPage() {
 
         {/* Actions */}
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <button
+            onClick={handleDownload}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-white px-6 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+            </svg>
+            Download Confirmation
+          </button>
           <button
             onClick={handleViewBookings}
             className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"

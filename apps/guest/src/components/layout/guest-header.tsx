@@ -15,7 +15,7 @@ export function GuestHeader() {
   useEffect(() => {
     getAllProperties().then((props) => {
       if (props.length === 1) {
-        setBrandName(props[0].name);
+        setBrandName(props[0]!.name);
       } else if (props.length > 1) {
         // Use tenant name or generic
         setBrandName("Our Lodges");

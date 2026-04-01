@@ -164,13 +164,21 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
           to: guestEmail,
           guestName: `${guest?.firstName ?? ""} ${guest?.lastName ?? ""}`.trim() || "Guest",
           propertyName: (propData?.name as string) ?? "Our Lodge",
+          propertyEmail: (propData?.email as string) ?? undefined,
+          propertyPhone: (propData?.phone as string) ?? undefined,
           roomTypeName: (rtData?.name as string) ?? "Room",
           roomName: null,
           checkInDate: data.checkInDate,
           checkOutDate: data.checkOutDate,
           nightCount: result.nightCount,
+          adults: data.adults,
+          children: data.children ?? 0,
           totalAmount: formatCents(result.totalRoomCharges),
+          ratePerNight: formatCents(result.roomRate),
           reservationId: result.id,
+          specialRequests: data.specialRequests,
+          checkInTime: (propData?.checkInTime as string) ?? "14:00",
+          checkOutTime: (propData?.checkOutTime as string) ?? "11:00",
         });
       }
     } catch (emailErr) {

@@ -1,4 +1,3 @@
-import { usePropertyStore } from "@/stores/property.store";
 import { useUIStore } from "@/stores/ui.store";
 
 const mainNavItems = [
@@ -19,7 +18,6 @@ export function Sidebar() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const currentPage = useUIStore((s) => s.currentPage);
   const navigate = useUIStore((s) => s.navigate);
-  const propertyName = usePropertyStore((s) => s.propertyName);
 
   function renderNavButton(item: { label: string; path: string; icon: string }) {
     return (

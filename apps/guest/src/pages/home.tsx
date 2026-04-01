@@ -41,10 +41,10 @@ export function HomePage() {
   }
 
   const heroTitle = properties.length === 1
-    ? properties[0].name
+    ? properties[0]!.name
     : "Book Your Perfect Stay";
   const heroSubtitle = properties.length === 1
-    ? `Welcome to ${properties[0].name}. Book your bush escape in just a few clicks.`
+    ? `Welcome to ${properties[0]!.name}. Book your bush escape in just a few clicks.`
     : "Discover our lodges and book your bush escape in just a few clicks.";
 
   return (

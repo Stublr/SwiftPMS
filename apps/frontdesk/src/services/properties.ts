@@ -22,7 +22,7 @@ export async function createProperty(data: CreatePropertyRequest): Promise<strin
     phone: data.phone ?? null,
     email: data.email ?? null,
     description: data.description ?? null,
-    imageUrls: (data as Record<string, unknown>).imageUrls ?? [],
+    imageUrls: (data as unknown as Record<string, unknown>).imageUrls ?? [],
     amenities: data.amenities ?? [],
     checkInTime: data.checkInTime ?? "14:00",
     checkOutTime: data.checkOutTime ?? "11:00",

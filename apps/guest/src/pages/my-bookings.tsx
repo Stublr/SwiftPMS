@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { getMyBookings } from "@/services/booking";
+import { downloadBookingPdf } from "@/lib/booking-pdf";
 import { formatCents } from "@swiftpms/shared";
 import type { Reservation } from "@swiftpms/shared";
 
@@ -209,6 +210,24 @@ export function MyBookingsPage() {
                   <div className="text-lg font-bold text-foreground">
                     {formatCents(booking.totalRoomCharges)}
                   </div>
+                </div>
+
+                <div className="mt-3 flex justify-end border-t border-border pt-3">
+                  <button
+                    onClick={() =>
+                      downloadBookingPdf({
+                        reservation: booking,
+                        guestName: firstName ?? "Guest",
+                        guestEmail: useGuestAuthStore.getState().email ?? "",
+                      })
+                    }
+                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                  >
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                    </svg>
+                    Download Confirmation
+                  </button>
                 </div>
               </div>
             </div>

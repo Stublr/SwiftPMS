@@ -1,4 +1,4 @@
-import { doc, getDoc, collection, getDocs, query, where, orderBy } from "firebase/firestore";
+import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 const TENANT_ID = import.meta.env.VITE_TENANT_ID || "demo-tenant";
