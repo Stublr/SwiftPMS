@@ -21,6 +21,8 @@ export function RoomsPage() {
   const checkInDate = useBookingStore((s) => s.checkInDate);
   const checkOutDate = useBookingStore((s) => s.checkOutDate);
   const adults = useBookingStore((s) => s.adults);
+  const children = useBookingStore((s) => s.children);
+  const totalGuests = adults + children;
   const setDates = useBookingStore((s) => s.setDates);
   const setRoomType = useBookingStore((s) => s.setRoomType);
   const setProperty = useBookingStore((s) => s.setProperty);
@@ -43,11 +45,11 @@ export function RoomsPage() {
       .finally(() => setLoadingProps(false));
   }, []);
 
-  // When dates change, fetch availability for all properties
+  // When dates or guest count change, fetch availability for all properties
   useEffect(() => {
     if (!hasDates || properties.length === 0) return;
     fetchAllAvailability(checkInDate, checkOutDate);
-  }, [checkInDate, checkOutDate, properties.length]);
+  }, [checkInDate, checkOutDate, totalGuests, properties.length]);
 
   async function fetchAllAvailability(ci: string, co: string) {
     setProperties((prev) =>
@@ -56,7 +58,9 @@ export function RoomsPage() {
 
     for (const pa of properties) {
       try {
-        const rooms = await checkAvailability(ci, co, pa.property.id);
+        const allRooms = await checkAvailability(ci, co, pa.property.id);
+        // Filter to room types that can accommodate the total guest count
+        const rooms = allRooms.filter((r) => r.maxOccupancy >= totalGuests);
         setProperties((prev) =>
           prev.map((p) =>
             p.property.id === pa.property.id
