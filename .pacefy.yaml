@@ -1,0 +1,11 @@
+# .pacefy.yaml — Pacefy project mapping for this repo
+# This file SHOULD be committed to git. It contains no secrets.
+# Find your IDs in the Pacefy dashboard under Settings / Projects.
+
+version: "1"
+
+# Plankton organization
+organization_id: "cc6ba3cc-2763-47f6-8f67-280e0dd754fb"
+
+# "SwiftPMS" project
+project_id: "yYmXCGburh3hLpcE6PrB"
