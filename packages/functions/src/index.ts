@@ -24,6 +24,7 @@ export { updateRoomStatus } from "./rooms/updateRoomStatus.js";
 export { createGuestAccount } from "./guest/createGuestAccount.js";
 export { checkAvailability } from "./guest/checkAvailability.js";
 export { createGuestReservation } from "./guest/createGuestReservation.js";
+export { createGuest } from "./guest/createGuest.js";
 
 // Triggers
 export { onReservationUpdate } from "./triggers/onReservationUpdate.js";

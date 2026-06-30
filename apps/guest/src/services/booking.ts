@@ -11,6 +11,20 @@ import { useGuestAuthStore } from "@/stores/auth.store";
 import { getTenantId } from "@/services/property";
 import type { Reservation } from "@swiftpms/shared";
 
+/**
+ * Cancel a reservation the guest just created. Used to roll back the
+ * reservation + folio + room hold when the subsequent payment-init call
+ * fails (otherwise we leave orphan held rooms blocking inventory).
+ */
+export async function cancelOwnReservation(
+  reservationId: string,
+  propertyId: string,
+  reason = "payment_init_failed",
+): Promise<void> {
+  const fn = httpsCallable(functions, "cancelReservation");
+  await fn({ reservationId, propertyId, reason });
+}
+
 export async function createBooking(data: {
   guestId: string;
   roomTypeId: string;

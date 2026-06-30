@@ -57,8 +57,12 @@ self.addEventListener("fetch", (event) => {
         (cached) =>
           cached ||
           fetch(req).then((res) => {
-            const copy = res.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+            // ONLY cache successful, complete responses. A 404/500/opaque
+            // partial response would otherwise poison the cache permanently.
+            if (res && res.ok && res.status === 200 && res.type === "basic") {
+              const copy = res.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+            }
             return res;
           }),
       ),
@@ -70,8 +74,10 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+        if (res && res.ok && res.status === 200 && res.type === "basic") {
+          const copy = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
+        }
         return res;
       })
       .catch(() => caches.match(req).then((c) => c || caches.match("/"))),

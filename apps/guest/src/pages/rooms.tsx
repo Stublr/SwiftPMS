@@ -337,10 +337,22 @@ function RoomTypeCard({
                   <span className="font-display text-2xl font-semibold text-foreground">
                     {formatCents(room.tieredPricing.standard.baseRate)}
                   </span>
-                  <span className="text-sm text-muted-foreground"> per person / night</span>
+                  <span className="text-sm text-muted-foreground">
+                    {" "}/ night ({room.tieredPricing.standard.basePersonCount}{" "}
+                    {room.tieredPricing.standard.basePersonCount === 1
+                      ? "person"
+                      : "people"}{" "}
+                    included)
+                  </span>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Children under {room.tieredPricing.childAgeMax + 1}:{" "}
-                    {formatCents(room.tieredPricing.standard.extraChild)}/night • High season rates apply on peak dates
+                    Each extra adult{" "}
+                    {formatCents(room.tieredPricing.standard.extraAdult)}/night
+                    {" · "}children under{" "}
+                    {room.tieredPricing.childAgeMax + 1}{" "}
+                    {formatCents(room.tieredPricing.standard.extraChild)}/night
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    High season rates apply on public holidays, school holidays and long weekends.
                   </p>
                 </>
               ) : (

@@ -18,6 +18,61 @@ export async function getReservations(status?: string): Promise<Reservation[]> {
   return snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation);
 }
 
+/**
+ * Targeted query for "today's arrivals" — confirmed reservations whose
+ * checkInDate equals today. Bypasses the 100-row cap of getReservations()
+ * which orders by createdAt desc and would miss bookings made months ago.
+ */
+export async function getArrivalsForDate(date: string): Promise<Reservation[]> {
+  const { tenantId, propertyId } = getPath();
+  const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`);
+  const snap = await getDocs(
+    query(
+      colRef,
+      where("status", "==", "confirmed"),
+      where("checkInDate", "==", date),
+    ),
+  );
+  return snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation);
+}
+
+/**
+ * Targeted query for "today's departures" — checked-in reservations whose
+ * checkOutDate equals today.
+ */
+export async function getDeparturesForDate(date: string): Promise<Reservation[]> {
+  const { tenantId, propertyId } = getPath();
+  const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`);
+  const snap = await getDocs(
+    query(
+      colRef,
+      where("status", "==", "checked_in"),
+      where("checkOutDate", "==", date),
+    ),
+  );
+  return snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation);
+}
+
+/**
+ * In-house — checked-in reservations spanning today (checkInDate <= today < checkOutDate).
+ * Firestore can only range-query on a single field, so we fetch on checkOutDate
+ * (must be > today) then filter checkInDate <= today client-side.
+ */
+export async function getInHouseForDate(date: string): Promise<Reservation[]> {
+  const { tenantId, propertyId } = getPath();
+  const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`);
+  const snap = await getDocs(
+    query(
+      colRef,
+      where("status", "==", "checked_in"),
+      where("checkOutDate", ">", date),
+    ),
+  );
+  return snap.docs
+    .map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation)
+    .filter((r) => r.checkInDate <= date);
+}
+
 export async function createReservation(data: CreateReservationRequest): Promise<{ id: string }> {
   const { propertyId } = getPath();
   const fn = httpsCallable(functions, "createReservation");

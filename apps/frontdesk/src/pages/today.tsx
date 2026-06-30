@@ -1,8 +1,12 @@
 import { useEffect, useState } from "react";
 
-import { ReservationStatus, type Reservation } from "@swiftpms/shared";
+import { type Reservation } from "@swiftpms/shared";
 
-import { getReservations } from "@/services/reservations";
+import {
+  getArrivalsForDate,
+  getDeparturesForDate,
+  getInHouseForDate,
+} from "@/services/reservations";
 import { useUIStore } from "@/stores/ui.store";
 
 type Bucket = "arrivals" | "inhouse" | "departures";
@@ -26,30 +30,18 @@ export function TodayPage() {
   async function load() {
     setLoading(true);
     try {
-      const all = await getReservations();
       const today = todayIso();
-      setArrivals(
-        all.filter(
-          (r) =>
-            r.status === ReservationStatus.CONFIRMED &&
-            r.checkInDate === today,
-        ),
-      );
-      setInhouse(
-        all.filter(
-          (r) =>
-            r.status === ReservationStatus.CHECKED_IN &&
-            r.checkInDate <= today &&
-            r.checkOutDate > today,
-        ),
-      );
-      setDepartures(
-        all.filter(
-          (r) =>
-            r.status === ReservationStatus.CHECKED_IN &&
-            r.checkOutDate === today,
-        ),
-      );
+      // Three targeted queries in parallel — each is exact, none capped at 100
+      // (the old single-getReservations call ordered by createdAt and would
+      // miss bookings made months ago that happen to check in today).
+      const [arr, dep, inh] = await Promise.all([
+        getArrivalsForDate(today),
+        getDeparturesForDate(today),
+        getInHouseForDate(today),
+      ]);
+      setArrivals(arr);
+      setDepartures(dep);
+      setInhouse(inh);
     } finally {
       setLoading(false);
     }

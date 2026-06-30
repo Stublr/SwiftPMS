@@ -1,5 +1,6 @@
-import { collection, doc, getDocs, setDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
 import { usePropertyStore } from "@/stores/property.store";
 import type { Guest } from "@swiftpms/shared";
 
@@ -50,18 +51,27 @@ export async function getAllGuests(): Promise<Guest[]> {
   }) as unknown as Guest);
 }
 
-export async function createGuest(data: Record<string, unknown>): Promise<Guest> {
-  const { tenantId } = getPath();
-  const ref = doc(collection(db, `tenants/${tenantId}/guests`));
-  const now = new Date().toISOString();
-  const guestDoc = {
-    ...data,
-    companions: data.companions ?? [],
-    createdAt: now,
-    updatedAt: now,
-  };
-  await setDoc(ref, guestDoc);
-  return { id: ref.id, tenantId, ...guestDoc } as Guest;
+/**
+ * Create a guest record via the createGuest Cloud Function. Validated with
+ * Zod, persists the tenantId field, writes an audit log entry. Replaces the
+ * previous direct setDoc which bypassed all of the above.
+ */
+/**
+ * Server-validated guest create. Accepts a loose payload (the GuestForm and
+ * other callers build a Record), strips empty/null fields so the server-side
+ * Zod schema (which uses `.optional()`) doesn't reject them, then calls the
+ * createGuest Cloud Function which validates + writes audit log + sets
+ * tenantId. Returns the persisted Guest record.
+ */
+export async function createGuest(
+  data: Record<string, unknown>,
+): Promise<Guest> {
+  const fn = httpsCallable(functions, "createGuest");
+  const payload = Object.fromEntries(
+    Object.entries(data).filter(([, v]) => v != null && v !== ""),
+  );
+  const res = await fn(payload);
+  return res.data as Guest;
 }
 
 export async function updateGuest(id: string, data: Record<string, unknown>): Promise<void> {

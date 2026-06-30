@@ -4,7 +4,7 @@ import { useUIStore } from "@/stores/ui.store";
 import { useBookingStore } from "@/stores/booking.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { checkAvailability, type AvailableRoomType } from "@/services/availability";
-import { createBooking } from "@/services/booking";
+import { cancelOwnReservation, createBooking } from "@/services/booking";
 import { initiatePeachCheckout } from "@/services/payment";
 import { writePendingToStorage } from "@/pages/payment-result";
 import { guestLogin, guestRegister } from "@/services/auth";
@@ -123,8 +123,15 @@ export function BookingPage() {
     if (!guestId || !selectedRoomTypeId || !checkInDate || !checkOutDate) return;
     setSubmitting(true);
     setError(null);
+
+    // Two-stage flow:
+    //   (1) createGuestReservation — creates reservation + folio + holds room
+    //   (2) initiatePeachCheckout   — calls Plankton, gets redirect URL
+    // If (2) fails the reservation from (1) is orphaned and blocks inventory,
+    // so we must roll it back before surfacing the error.
+    let bookingResult: Awaited<ReturnType<typeof createBooking>> | null = null;
     try {
-      const bookingResult = await createBooking({
+      bookingResult = await createBooking({
         guestId,
         roomTypeId: selectedRoomTypeId,
         checkInDate,
@@ -142,8 +149,7 @@ export function BookingPage() {
         totalRoomCharges: bookingResult.totalRoomCharges,
       });
 
-      // Kick off Peach hosted checkout. On return, the guest lands on
-      // /?payment_return=1 which the app router maps to the payment-result page.
+      // Kick off Peach hosted checkout via Plankton platform.
       const shopperResultUrl = `${window.location.origin}/?payment_return=1`;
       const { paymentIntentId, redirectUrl } = await initiatePeachCheckout({
         purpose: "guest_booking",
@@ -170,14 +176,26 @@ export function BookingPage() {
       // Send the user to Peach. They come back to shopperResultUrl.
       window.location.assign(redirectUrl);
     } catch (err) {
+      // Roll back the reservation if it was created but payment-init failed.
+      if (bookingResult) {
+        try {
+          await cancelOwnReservation(
+            bookingResult.id,
+            selectedPropertyId!,
+            "payment_init_failed",
+          );
+        } catch {
+          // If rollback fails the sweeper will release the hold after 30 min.
+          // Don't mask the original error with a rollback error.
+        }
+      }
       setError(
-        err instanceof Error ? err.message : "Failed to create booking.",
+        err instanceof Error
+          ? `Couldn't reach the payment gateway. Please try again.\n(${err.message})`
+          : "Failed to create booking.",
       );
       setSubmitting(false);
     }
-    // Note: don't reset `submitting` in the success path — the browser is
-    // navigating away to Peach, and leaving the button disabled prevents
-    // a double-click before the redirect kicks in.
   }
 
   if (loading) {
