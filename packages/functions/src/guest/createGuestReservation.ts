@@ -1,7 +1,14 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
-import { calculateNights, multiplyCents, formatCents, createReservationSchema } from "@swiftpms/shared";
+import {
+  calculateNights,
+  calculateTieredStayTotal,
+  multiplyCents,
+  formatCents,
+  createReservationSchema,
+  type TieredPricing,
+} from "@swiftpms/shared";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
 import { db, reservationsRef, foliosRef, roomTypeRef, roomsRef, guestRef, propertyRef } from "../lib/firestore.js";
@@ -43,8 +50,31 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
       const roomType = rtSnap.data()!;
 
       const nightCount = calculateNights(data.checkInDate, data.checkOutDate);
-      const roomRate = roomType.baseRate as number;
-      const totalRoomCharges = multiplyCents(roomRate, nightCount);
+      const tiered = roomType.tieredPricing as TieredPricing | undefined;
+      const adults = data.adults;
+      const children = data.children ?? 0;
+
+      let roomRate: number;
+      let totalRoomCharges: number;
+      let chargeDescription: string;
+      if (tiered) {
+        const calc = calculateTieredStayTotal(
+          tiered,
+          data.checkInDate,
+          data.checkOutDate,
+          adults,
+          children,
+        );
+        roomRate = calc.nightlyRate;
+        totalRoomCharges = calc.total;
+        const childLabel =
+          children > 0 ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}` : "";
+        chargeDescription = `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel})`;
+      } else {
+        roomRate = roomType.baseRate as number;
+        totalRoomCharges = multiplyCents(roomRate, nightCount);
+        chargeDescription = `${roomType.name} - ${nightCount} night(s)`;
+      }
 
       // Auto-assign an available room of this type
       const allRooms = await tx.get(
@@ -124,7 +154,7 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
         charges: [{
           id: `chg_${Date.now()}`,
           category: "room",
-          description: `${roomType.name} - ${nightCount} night(s)`,
+          description: chargeDescription,
           amount: roomRate,
           quantity: nightCount,
           total: totalRoomCharges,
