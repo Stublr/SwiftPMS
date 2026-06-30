@@ -55,7 +55,7 @@ export function HomePage() {
   return (
     <div className="flex flex-col">
       {/* ============================ HERO ============================ */}
-      <section className="relative isolate flex min-h-[88vh] items-center overflow-hidden">
+      <section className="relative isolate flex min-h-[70vh] flex-col justify-center overflow-hidden sm:min-h-[88vh] sm:block sm:items-center">
         <img
           src="/images/lodge/pool-sunset.jpeg"
           alt="Lodge pool at sunset"
@@ -80,8 +80,8 @@ export function HomePage() {
           </div>
         </div>
 
-        {/* ---- Floating search card ---- */}
-        <div className="absolute inset-x-0 bottom-0 z-20 translate-y-1/2 px-6">
+        {/* ---- Search card ---- inline on mobile, floats on tablet+ */}
+        <div className="relative z-20 mt-8 px-6 pb-10 sm:absolute sm:inset-x-0 sm:bottom-0 sm:mt-0 sm:translate-y-1/2 sm:pb-0">
           <div className="mx-auto max-w-5xl rounded-2xl border border-white/60 bg-surface/95 p-5 shadow-hero backdrop-blur-md sm:p-6">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_0.8fr_0.8fr_auto]">
               <Field label="Check-in" htmlFor="checkin">
@@ -178,8 +178,8 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* spacer for the overlapping search card */}
-      <div className="h-28 sm:h-24" />
+      {/* spacer for the overlapping search card — only when card is floating (sm+) */}
+      <div className="hidden sm:block sm:h-24" />
 
       {/* ============================ LODGES ============================ */}
       {properties.length > 1 && (
