@@ -33,13 +33,6 @@
       ]
     },
     {
-      "collectionGroup": "dailyAggregates",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "date", "order": "ASCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "auditLog",
       "queryScope": "COLLECTION",
       "fields": [

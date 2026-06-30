@@ -73,16 +73,23 @@ export async function initiateCheckoutAtPeach(params: {
   notificationUrl: string;
   customParameters?: Record<string, string>;
 }): Promise<{ redirectUrl: string; checkoutId?: string }> {
+  // Field names mirror the proven sp_payments implementation
+  // (lib/src/models/payments/peachPayments/peach_pay_model.dart::toMap).
+  // Peach SA expects 'authentication.entityId' (dotted), not 'entityID'.
   const body: Record<string, string> = {
-    entityID: params.entityId,
-    amount: params.amount,
-    currency: params.currency,
-    paymentType: params.paymentType,
+    "authentication.entityId": params.entityId,
     merchantTransactionId: params.merchantTransactionId,
+    amount: params.amount,
+    paymentType: params.paymentType,
+    currency: params.currency,
     nonce: params.nonce,
     shopperResultUrl: params.shopperResultUrl,
+    defaultPaymentMethod: "",
+    forceDefaultMethod: "false",
     cancelUrl: params.cancelUrl,
     notificationUrl: params.notificationUrl,
+    createRegistration: "false",
+    allowStoredCards: "true",
   };
   if (params.customerEmail)
     body["customer.email"] = params.customerEmail;
