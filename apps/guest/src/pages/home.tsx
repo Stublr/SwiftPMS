@@ -43,10 +43,10 @@ export function HomePage() {
 
   const heroTitle = properties.length === 1
     ? properties[0]!.name
-    : "Book Your Perfect Stay";
+    : "Book Your Campsite";
   const heroSubtitle = properties.length === 1
-    ? `Welcome to ${properties[0]!.name}. Book your bush escape in just a few clicks.`
-    : "Discover our lodges and book your bush escape in just a few clicks.";
+    ? `Welcome to ${properties[0]!.name}. Book your stay in just a few clicks.`
+    : "Discover our campsites and book your stay in just a few clicks.";
 
   return (
     <div className="flex flex-col">
@@ -128,7 +128,7 @@ export function HomePage() {
                   onClick={handleSearch}
                   className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
                 >
-                  Search All Lodges
+                  Check Availability
                 </button>
               </div>
             </div>
@@ -137,11 +137,11 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Lodges Section */}
+      {/* Campsites Section */}
       {properties.length > 1 && (
         <section className="mx-auto max-w-5xl px-4 py-16">
           <h2 className="mb-8 text-center text-2xl font-bold text-foreground sm:text-3xl">
-            Our Lodges
+            Our Campsites
           </h2>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {properties.map((p) => (

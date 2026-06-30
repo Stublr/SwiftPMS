@@ -173,7 +173,7 @@ body{font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,
 <div class="grp"><b>YOUR GROUP:</b> ${guests}</div>
 
 <div class="ps"><h3>Price</h3>
-<div class="pr"><span>1 room \u00d7 ${nights} night${nights !== 1 ? "s" : ""}</span><span>${formatCents(exVat)}</span></div>
+<div class="pr"><span>1 campsite \u00d7 ${nights} night${nights !== 1 ? "s" : ""}</span><span>${formatCents(exVat)}</span></div>
 <div class="pr"><span>15% VAT</span><span>${formatCents(vat)}</span></div>
 <div class="pr t"><span>Price</span><span>${total}</span></div>
 <div style="font-size:9px;color:#888;margin-top:2px;">Rate per night: ${rate}</div>

@@ -1,34 +1,184 @@
 @import "tailwindcss";
 
+/*
+ * ALGAFUSION — "The Architecture of Escape"
+ * Guest portal design system.
+ *
+ * Palette derived from the brand mark:
+ *  - Deep forest green  (#103d2f)  — wordmark, primary
+ *  - Burnt orange       (#e2742b)  — outer chevron + tagline, accent
+ *  - Leaf / lime green  (#84bf3f)  — lower chevron, highlight
+ * Set on a warm sand canvas so white cards lift off the page.
+ */
 @theme {
-  --color-background: #ffffff;
-  --color-foreground: #1e293b;
-  --color-primary: #0ea5e9;
-  --color-primary-foreground: #ffffff;
-  --color-secondary: #f8fafc;
-  --color-secondary-foreground: #1e293b;
-  --color-muted: #f1f5f9;
-  --color-muted-foreground: #64748b;
-  --color-accent: #f0f9ff;
-  --color-accent-foreground: #0c4a6e;
-  --color-destructive: #ef4444;
+  /* — Surfaces — */
+  --color-background: #f7f4ec; /* warm sand canvas */
+  --color-surface: #ffffff; /* card surface */
+  --color-foreground: #1b2620; /* deep evergreen ink */
+
+  /* — Primary: deep forest green — */
+  --color-primary: #103d2f;
+  --color-primary-foreground: #f4f1e8;
+  --color-primary-dark: #0a2c21;
+  --color-primary-light: #1d5a44;
+
+  /* — Secondary / stone — */
+  --color-secondary: #efeadd;
+  --color-secondary-foreground: #2a3a31;
+
+  /* — Muted — */
+  --color-muted: #efeadd;
+  --color-muted-foreground: #6f756a;
+
+  /* — Accent: burnt orange — */
+  --color-accent: #e2742b;
+  --color-accent-foreground: #ffffff;
+  --color-accent-dark: #c45e1c;
+  --color-accent-soft: #fbeede;
+
+  /* — Leaf: lime / leaf green — */
+  --color-leaf: #84bf3f;
+  --color-leaf-foreground: #11331a;
+  --color-leaf-soft: #eef6df;
+
+  /* — Status — */
+  --color-destructive: #c0432e;
   --color-destructive-foreground: #ffffff;
-  --color-border: #e2e8f0;
-  --color-ring: #0ea5e9;
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --radius-sm: 0.25rem;
-  --radius-md: 0.5rem;
-  --radius-lg: 0.75rem;
+  --color-success: #2f8f5b;
+  --color-warning: #d98324;
+  --color-info: #2b6f6a;
+
+  /* — Lines & rings — */
+  --color-border: #e5ddcc;
+  --color-border-strong: #d6cdb8;
+  --color-ring: #1d5a44;
+
+  /* — Typography — */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+
+  /* — Radii — */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+
+  /* — Brand shadows (green-tinted, soft) — */
+  --shadow-soft: 0 1px 2px rgba(16, 61, 47, 0.04), 0 4px 16px rgba(16, 61, 47, 0.06);
+  --shadow-card: 0 2px 4px rgba(16, 61, 47, 0.04), 0 12px 32px -8px rgba(16, 61, 47, 0.12);
+  --shadow-lift: 0 8px 24px -6px rgba(16, 61, 47, 0.18), 0 24px 48px -16px rgba(16, 61, 47, 0.16);
+  --shadow-hero: 0 24px 64px -16px rgba(10, 44, 33, 0.45);
 }
 
-body {
-  font-family:
-    "Inter",
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Display headings get the editorial serif. */
+  .font-display {
+    font-optical-sizing: auto;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background-color: var(--color-leaf);
+    color: var(--color-leaf-foreground);
+  }
+
+  /* Tasteful native control accenting */
+  input,
+  select,
+  textarea {
+    accent-color: var(--color-primary);
+  }
+}
+
+@layer utilities {
+  /* Eyebrow / overline label — echoes the logo tagline tracking. */
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-weight: 600;
+    font-size: 0.7rem;
+  }
+
+  /* Brand gradients */
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, #0a2c21 0%, #103d2f 55%, #1d5a44 100%);
+  }
+  .bg-leaf-gradient {
+    background-image: linear-gradient(120deg, #103d2f 0%, #2f7d4f 60%, #84bf3f 130%);
+  }
+  .text-gradient-warm {
+    background-image: linear-gradient(100deg, #e2742b 0%, #f0a35a 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* Image placeholder wash for missing photos */
+  .bg-placeholder {
+    background-image: linear-gradient(135deg, #eef6df 0%, #e8efd6 50%, #f1ede1 100%);
+  }
+
+  /* Hero scrim — keeps white text legible over photography */
+  .hero-scrim {
+    background-image: linear-gradient(
+      to bottom,
+      rgba(10, 44, 33, 0.35) 0%,
+      rgba(10, 44, 33, 0.55) 55%,
+      rgba(10, 44, 33, 0.82) 100%
+    );
+  }
+
+  .shadow-soft {
+    box-shadow: var(--shadow-soft);
+  }
+  .shadow-card {
+    box-shadow: var(--shadow-card);
+  }
+  .shadow-lift {
+    box-shadow: var(--shadow-lift);
+  }
+  .shadow-hero {
+    box-shadow: var(--shadow-hero);
+  }
+
+  /* Subtle entrance animations */
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(16px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes float-slow {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+  .animate-float-slow {
+    animation: float-slow 6s ease-in-out infinite;
+  }
 }

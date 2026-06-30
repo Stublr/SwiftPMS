@@ -3,6 +3,8 @@ import { useUIStore } from "@/stores/ui.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { initGuestAuthListener } from "@/services/auth";
 import { GuestHeader } from "@/components/layout/guest-header";
+import { GuestFooter } from "@/components/layout/guest-footer";
+import { BrandMark } from "@/components/brand/logo";
 import { HomePage } from "@/pages/home";
 import { RoomsPage } from "@/pages/rooms";
 import { BookingPage } from "@/pages/booking";
@@ -55,21 +57,25 @@ export function App() {
 
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="text-sm text-muted-foreground">Loading...</p>
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-5">
+          <BrandMark className="h-12 w-12 animate-float-slow" />
+          <div className="h-1 w-24 overflow-hidden rounded-full bg-muted">
+            <div className="h-full w-1/2 animate-[float-slow_1.4s_ease-in-out_infinite] rounded-full bg-accent" />
+          </div>
+          <p className="eyebrow text-muted-foreground">Preparing your escape</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="flex min-h-screen flex-col bg-background">
       <GuestHeader />
-      <main>
+      <main className="flex-1">
         <PageRouter />
       </main>
+      <GuestFooter />
     </div>
   );
 }

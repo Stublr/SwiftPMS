@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { useUIStore } from "@/stores/ui.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { guestLogout } from "@/services/auth";
-import { getAllProperties } from "@/services/property";
+import { Logo } from "@/components/brand/logo";
+import { cn } from "@/lib/utils";
 
 export function GuestHeader() {
   const navigate = useUIStore((s) => s.navigate);
@@ -10,17 +11,14 @@ export function GuestHeader() {
   const isAuthenticated = useGuestAuthStore((s) => s.isAuthenticated);
   const firstName = useGuestAuthStore((s) => s.firstName);
   const lastName = useGuestAuthStore((s) => s.lastName);
-  const [brandName, setBrandName] = useState("SwiftPMS");
+
+  const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-    getAllProperties().then((props) => {
-      if (props.length === 1) {
-        setBrandName(props[0]!.name);
-      } else if (props.length > 1) {
-        // Use tenant name or generic
-        setBrandName("Our Lodges");
-      }
-    }).catch(() => {});
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   async function handleLogout() {
@@ -28,31 +26,30 @@ export function GuestHeader() {
     navigate("/");
   }
 
+  const initials = `${firstName?.[0] ?? ""}${lastName?.[0] ?? ""}`.toUpperCase();
+
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-white/95 backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4">
-        {/* Logo */}
+    <header
+      className={cn(
+        "sticky top-0 z-50 border-b transition-all duration-300",
+        scrolled
+          ? "border-border/80 bg-background/85 shadow-soft backdrop-blur-md"
+          : "border-transparent bg-background/60 backdrop-blur-sm",
+      )}
+    >
+      <div className="mx-auto flex h-[4.5rem] max-w-6xl items-center justify-between px-4 sm:px-6">
         <button
           onClick={() => navigate("/")}
-          className="flex items-center gap-2 text-lg font-bold text-foreground transition-colors hover:text-primary"
+          className="group transition-transform duration-200 active:scale-[0.98]"
+          aria-label="ALGAFUSION home"
         >
-          <svg
-            className="h-7 w-7 text-primary"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1.5}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z"
-            />
-          </svg>
-          {brandName}
+          <Logo
+            showTagline
+            markClassName="transition-transform duration-300 group-hover:-translate-y-0.5"
+            className="[&_.text-accent]:hidden sm:[&_.text-accent]:block"
+          />
         </button>
 
-        {/* Navigation */}
         <nav className="flex items-center gap-1 sm:gap-2">
           <NavLink
             label="Home"
@@ -67,16 +64,21 @@ export function GuestHeader() {
             />
           )}
 
-          <div className="ml-2 h-6 w-px bg-border sm:ml-4" />
+          <div className="mx-1 h-6 w-px bg-border sm:mx-3" />
 
           {isAuthenticated ? (
-            <div className="ml-2 flex items-center gap-2 sm:ml-4">
-              <span className="hidden text-sm text-muted-foreground sm:inline">
-                {firstName} {lastName}
+            <div className="flex items-center gap-2.5">
+              <span className="hidden items-center gap-2 sm:flex">
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
+                  {initials || "G"}
+                </span>
+                <span className="text-sm font-medium text-foreground">
+                  {firstName}
+                </span>
               </span>
               <button
                 onClick={handleLogout}
-                className="rounded-lg px-3 py-1.5 text-sm font-medium text-destructive transition-colors hover:bg-destructive/5"
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 Logout
               </button>
@@ -84,7 +86,7 @@ export function GuestHeader() {
           ) : (
             <button
               onClick={() => navigate("/login")}
-              className="ml-2 rounded-lg bg-primary px-4 py-1.5 text-sm font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 sm:ml-4"
+              className="rounded-full bg-accent px-5 py-2 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card active:scale-[0.98]"
             >
               Sign In
             </button>
@@ -107,13 +109,20 @@ function NavLink({
   return (
     <button
       onClick={onClick}
-      className={
+      className={cn(
+        "relative rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
         active
-          ? "rounded-lg bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary"
-          : "rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-      }
+          ? "text-primary"
+          : "text-muted-foreground hover:text-foreground",
+      )}
     >
       {label}
+      <span
+        className={cn(
+          "absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-accent transition-all duration-300",
+          active ? "opacity-100" : "opacity-0",
+        )}
+      />
     </button>
   );
 }

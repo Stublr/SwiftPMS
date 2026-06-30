@@ -110,7 +110,7 @@ export function RoomsPage() {
       </button>
 
       <h1 className="mb-2 text-2xl font-bold text-foreground sm:text-3xl">
-        Available Rooms
+        Available Campsites
       </h1>
 
       {/* Date Bar */}
@@ -139,7 +139,7 @@ export function RoomsPage() {
       ) : (
         <div className="mb-8 rounded-lg border border-border bg-white p-6 shadow-sm">
           <p className="mb-4 text-sm text-muted-foreground">
-            Select your dates to see available rooms across all lodges.
+            Select your dates to see available campsites.
           </p>
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col gap-1.5">
@@ -178,13 +178,13 @@ export function RoomsPage() {
 
       {/* Properties + Rooms */}
       {!loadingProps && properties.length === 0 && (
-        <p className="text-center text-muted-foreground">No lodges available.</p>
+        <p className="text-center text-muted-foreground">No campsites available.</p>
       )}
 
       <div className="space-y-10">
         {properties.map(({ property, rooms, loading, error }) => (
           <div key={property.id}>
-            {/* Lodge Header */}
+            {/* Property Header */}
             <div className="mb-4 border-b border-border pb-3">
               <h2 className="text-xl font-bold text-foreground">{property.name}</h2>
               {property.address && (
@@ -207,7 +207,7 @@ export function RoomsPage() {
 
             {!loading && hasDates && rooms.filter((r) => r.available > 0).length === 0 && !error && (
               <p className="py-4 text-sm text-muted-foreground">
-                No rooms available at this lodge for the selected dates.
+                No campsites available at this property for the selected dates.
               </p>
             )}
 
