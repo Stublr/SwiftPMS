@@ -15,6 +15,11 @@ import { PropertySelectPage } from "@/pages/property-select";
 import { ReportsPage } from "@/pages/reports";
 import { ReservationsPage } from "@/pages/reservations";
 import { RoomBoardPage } from "@/pages/room-board";
+import { ScanPage } from "@/pages/scan";
+import { TodayPage } from "@/pages/today";
+import { WalkInPage } from "@/pages/walk-in";
+import { MobileFolioPage } from "@/pages/mobile-folio";
+import { MobileNav } from "@/components/layout/mobile-nav";
 import { useAuthStore } from "@/stores/auth.store";
 import { usePropertyStore } from "@/stores/property.store";
 import { useUIStore } from "@/stores/ui.store";
@@ -39,6 +44,14 @@ function PageRouter() {
       return <UsersPage />;
     case "/check-in":
       return <CheckInPage />;
+    case "/scan":
+      return <ScanPage />;
+    case "/walk-in":
+      return <WalkInPage />;
+    case "/today":
+      return <TodayPage />;
+    case "/folio":
+      return <MobileFolioPage />;
     default:
       return <DashboardPage />;
   }
@@ -58,15 +71,18 @@ function AuthenticatedLayout() {
     );
   }
 
-  // Property selected -- show main layout
+  // Property selected -- show main layout with desktop sidebar + mobile bottom-tab nav
   return (
     <div className="flex h-screen bg-secondary">
-      <Sidebar />
+      <div className="hidden md:block">
+        <Sidebar />
+      </div>
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto pb-16 md:pb-0">
           <PageRouter />
         </main>
+        <MobileNav />
       </div>
     </div>
   );
@@ -77,14 +93,20 @@ export function App() {
   const navigate = useUIStore((s) => s.navigate);
   const [, setForceRender] = useState(0);
 
-  // Deep-link from a scanned QR: URL is /check-in?res=...&p=...&t=...
-  // Route into the in-app check-in view immediately, regardless of login state.
-  // If not logged in, the LoginPage renders below and after login the URL
-  // params are still there so the CheckInPage picks them up.
+  // Deep-link routing — pick up the URL path on first load so:
+  //   /check-in?res=...&p=...&t=...   → in-app CheckInPage (QR scan target)
+  //   /scan                            → QR scanner
+  //   /walk-in                         → walk-in booking form
+  //   /today                           → today's arrivals/departures
+  //   /folio?res=...                   → mobile folio view
+  // If not logged in, LoginPage renders first; URL params survive login so
+  // the deep-linked view picks them up on the next render.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (window.location.pathname === "/check-in") {
-      navigate("/check-in");
+    const path = window.location.pathname;
+    const known = ["/check-in", "/scan", "/walk-in", "/today", "/folio"];
+    if (known.includes(path)) {
+      navigate(path);
     }
   }, [navigate]);
 
