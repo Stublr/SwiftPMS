@@ -19,6 +19,7 @@ export interface InitiatePeachCheckoutResult {
   paymentIntentId: string;
   redirectUrl: string;
   merchantTransactionId: string;
+  planktonPaymentId?: string;
 }
 
 export async function initiatePeachCheckout(
@@ -28,6 +29,36 @@ export async function initiatePeachCheckout(
     InitiatePeachCheckoutInput,
     InitiatePeachCheckoutResult
   >(functions, "initiatePeachCheckout");
+  const result = await fn(input);
+  return result.data;
+}
+
+export interface SyncPaymentStatusInput {
+  propertyId: string;
+  paymentIntentId: string;
+  forceSync?: boolean;
+}
+
+export interface SyncPaymentStatusResult {
+  paymentIntentId: string;
+  status:
+    | "initiated"
+    | "redirected"
+    | "succeeded"
+    | "failed"
+    | "cancelled"
+    | "expired";
+  planktonStatus?: string;
+  terminal: boolean;
+}
+
+export async function syncPaymentStatus(
+  input: SyncPaymentStatusInput,
+): Promise<SyncPaymentStatusResult> {
+  const fn = httpsCallable<SyncPaymentStatusInput, SyncPaymentStatusResult>(
+    functions,
+    "syncPaymentStatus",
+  );
   const result = await fn(input);
   return result.data;
 }

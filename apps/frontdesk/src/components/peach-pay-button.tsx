@@ -8,6 +8,7 @@ import {
 
 import {
   initiatePeachCheckout,
+  syncPaymentStatus,
   watchPaymentIntent,
 } from "@/services/payment";
 import { usePropertyStore } from "@/stores/property.store";
@@ -70,6 +71,10 @@ export function PeachPayButton({
       setError("Property not selected");
       return;
     }
+    // Snapshot for closures — TypeScript can't narrow the store selectors
+    // across async boundaries.
+    const propId: string = propertyId;
+    const tenId: string = tenantId;
     if (amountCents <= 0) {
       setError("Amount must be greater than 0");
       return;
@@ -98,12 +103,46 @@ export function PeachPayButton({
       );
       popupRef.current = w;
 
-      // Subscribe to the PaymentIntent doc — Cloud Functions webhook updates it
-      // when Peach pings back.
       setWaiting(true);
+
+      // Two-track update strategy:
+      //  (1) Firestore listener — gives instant UI updates the moment our
+      //      syncPaymentStatus callable flips the doc.
+      //  (2) Authoritative poll against the Plankton platform — required
+      //      because the platform is the system-of-record; the Firestore
+      //      doc only changes after a poll/sync. (1) without (2) sits idle.
+      let pollTimer: number | null = null;
+      let forceSyncCount = 0;
+      let done = false;
+
+      function finish(updated: PaymentIntent | null, success: boolean) {
+        if (done) return;
+        done = true;
+        if (popupRef.current && !popupRef.current.closed) {
+          try {
+            popupRef.current.close();
+          } catch {
+            // ignore
+          }
+        }
+        setWaiting(false);
+        unsubRef.current?.();
+        unsubRef.current = null;
+        if (pollTimer !== null) window.clearTimeout(pollTimer);
+        if (success && updated) {
+          onSuccess?.(updated);
+        } else {
+          onFailure?.(
+            updated,
+            updated?.peachResultDescription ||
+              `Payment ${updated?.status ?? "failed"}`,
+          );
+        }
+      }
+
       unsubRef.current = watchPaymentIntent(
-        tenantId,
-        propertyId,
+        tenId,
+        propId,
         result.paymentIntentId,
         (updated) => {
           setIntent(updated);
@@ -114,30 +153,37 @@ export function PeachPayButton({
             updated.status === PaymentIntentStatus.CANCELLED ||
             updated.status === PaymentIntentStatus.EXPIRED;
           if (!terminal) return;
-
-          // Close popup if still open
-          if (popupRef.current && !popupRef.current.closed) {
-            try {
-              popupRef.current.close();
-            } catch {
-              // ignore
-            }
-          }
-          setWaiting(false);
-          unsubRef.current?.();
-          unsubRef.current = null;
-
-          if (updated.status === PaymentIntentStatus.SUCCEEDED) {
-            onSuccess?.(updated);
-          } else {
-            onFailure?.(
-              updated,
-              updated.peachResultDescription ||
-                `Payment ${updated.status}`,
-            );
-          }
+          finish(updated, updated.status === PaymentIntentStatus.SUCCEEDED);
         },
       );
+
+      async function poll() {
+        if (done) return;
+        try {
+          const forceSync = forceSyncCount >= 3;
+          const r = await syncPaymentStatus({
+            propertyId: propId,
+            paymentIntentId: result.paymentIntentId,
+            forceSync,
+          });
+          if (forceSync) forceSyncCount = 0;
+          else forceSyncCount += 1;
+          if (done) return;
+          if (r.terminal) {
+            // Doc will be flipped by the callable; the Firestore listener
+            // above picks it up and calls finish(). If for some reason the
+            // listener races, fall back to direct finish:
+            if (!intent) {
+              finish(null, r.status === PaymentIntentStatus.SUCCEEDED);
+            }
+            return;
+          }
+          pollTimer = window.setTimeout(poll, 3000);
+        } catch {
+          if (!done) pollTimer = window.setTimeout(poll, 4000);
+        }
+      }
+      poll();
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to start payment",

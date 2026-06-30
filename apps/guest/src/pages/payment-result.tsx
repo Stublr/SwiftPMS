@@ -5,7 +5,10 @@ import { PaymentIntentStatus, type PaymentIntent } from "@swiftpms/shared";
 import { useBookingStore } from "@/stores/booking.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { useUIStore } from "@/stores/ui.store";
-import { watchPaymentIntent } from "@/services/payment";
+import {
+  syncPaymentStatus,
+  watchPaymentIntent,
+} from "@/services/payment";
 
 const PENDING_KEY = "swiftpms.pendingPayment";
 
@@ -51,27 +54,66 @@ export function PaymentResultPage() {
     }
     // Prefer tenantId from token if available (more trustworthy).
     const tid = tenantId ?? ref.tenantId;
+    let cancelled = false;
+    let pollTimer: number | null = null;
+    let forceSyncCount = 0;
 
+    // Firestore listener for fast local updates once sync flips the doc.
     const unsub = watchPaymentIntent(
       tid,
       ref.propertyId,
       ref.paymentIntentId,
       (updated) => {
+        if (cancelled) return;
         setIntent(updated);
         if (updated?.status === PaymentIntentStatus.SUCCEEDED) {
           clearPendingFromStorage();
           setPendingPayment(null);
-          // Give a moment for the user to see "Success"
           setTimeout(() => navigate("/confirmation"), 1200);
         }
       },
     );
 
-    // Timeout after 90s — webhook hasn't fired
+    // Authoritative poll against the Plankton platform via our callable.
+    // Plankton is the system-of-record; this is what actually flips status.
+    async function poll() {
+      if (cancelled) return;
+      try {
+        // After a few normal polls, send forceSync to nudge the gateway in
+        // case the webhook-to-platform was missed.
+        const forceSync = forceSyncCount >= 3;
+        const res = await syncPaymentStatus({
+          propertyId: ref!.propertyId,
+          paymentIntentId: ref!.paymentIntentId,
+          forceSync,
+        });
+        if (forceSync) forceSyncCount = 0;
+        else forceSyncCount += 1;
+
+        if (cancelled) return;
+        if (res.terminal) {
+          if (res.status === PaymentIntentStatus.SUCCEEDED) {
+            clearPendingFromStorage();
+            setPendingPayment(null);
+            setTimeout(() => navigate("/confirmation"), 1200);
+          }
+          return;
+        }
+        pollTimer = window.setTimeout(poll, 3000);
+      } catch {
+        // Transient — retry in a few seconds
+        if (!cancelled) pollTimer = window.setTimeout(poll, 4000);
+      }
+    }
+    poll();
+
+    // Show a "still waiting" hint after 90s
     const t = window.setTimeout(() => setTimedOut(true), 90_000);
 
     return () => {
+      cancelled = true;
       unsub();
+      if (pollTimer) window.clearTimeout(pollTimer);
       window.clearTimeout(t);
     };
   }, [tenantId, navigate, setPendingPayment]);
@@ -79,7 +121,7 @@ export function PaymentResultPage() {
   if (missing) {
     return (
       <div className="mx-auto max-w-md px-4 py-20 text-center">
-        <h1 className="mb-3 text-xl font-bold text-foreground">
+        <h1 className="mb-3 font-display text-2xl font-semibold text-foreground">
           No payment in progress
         </h1>
         <p className="mb-6 text-sm text-muted-foreground">
@@ -87,7 +129,7 @@ export function PaymentResultPage() {
         </p>
         <button
           onClick={() => navigate("/")}
-          className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card"
         >
           Back to Home
         </button>
@@ -105,8 +147,8 @@ export function PaymentResultPage() {
     <div className="mx-auto max-w-md px-4 py-20 text-center">
       {!status || status === PaymentIntentStatus.REDIRECTED ? (
         <>
-          <div className="mx-auto mb-6 h-12 w-12 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <h1 className="mb-3 text-xl font-bold text-foreground">
+          <div className="mx-auto mb-6 h-12 w-12 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
+          <h1 className="mb-3 font-display text-2xl font-semibold text-foreground">
             Confirming your payment…
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -114,7 +156,7 @@ export function PaymentResultPage() {
             provider.
           </p>
           {timedOut && (
-            <p className="mt-6 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <p className="mt-6 rounded-xl border border-warning/30 bg-warning/10 p-3 text-xs text-warning">
               Still waiting after a minute and a half. Your card may already be
               charged. We've recorded the transaction; refresh in a moment or
               contact support if it doesn't update.
@@ -123,9 +165,9 @@ export function PaymentResultPage() {
         </>
       ) : status === PaymentIntentStatus.SUCCEEDED ? (
         <>
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-leaf-soft">
             <svg
-              className="h-9 w-9 text-success"
+              className="h-9 w-9 text-leaf"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -138,7 +180,7 @@ export function PaymentResultPage() {
               />
             </svg>
           </div>
-          <h1 className="mb-2 text-xl font-bold text-foreground">
+          <h1 className="mb-2 font-display text-2xl font-semibold text-foreground">
             Payment successful
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -147,9 +189,9 @@ export function PaymentResultPage() {
         </>
       ) : isTerminalFail ? (
         <>
-          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
             <svg
-              className="h-9 w-9 text-red-600"
+              className="h-9 w-9 text-destructive"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -162,7 +204,7 @@ export function PaymentResultPage() {
               />
             </svg>
           </div>
-          <h1 className="mb-3 text-xl font-bold text-foreground">
+          <h1 className="mb-3 font-display text-2xl font-semibold text-foreground">
             Payment {status === PaymentIntentStatus.CANCELLED ? "cancelled" : "failed"}
           </h1>
           <p className="mb-2 text-sm text-muted-foreground">
@@ -181,7 +223,7 @@ export function PaymentResultPage() {
                 setPendingPayment(null);
                 navigate("/rooms");
               }}
-              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+              className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card"
             >
               Try a different room
             </button>
@@ -191,7 +233,7 @@ export function PaymentResultPage() {
                 setPendingPayment(null);
                 navigate("/");
               }}
-              className="rounded-lg border border-border bg-white px-6 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
+              className="rounded-xl border border-border bg-surface px-6 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
             >
               Back to Home
             </button>

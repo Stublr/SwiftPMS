@@ -18,40 +18,38 @@ import {
 } from "../lib/errors.js";
 import {
   folioRef,
+  guestRef,
   paymentIntentRef,
   reservationRef,
 } from "../lib/firestore.js";
 import { validateRequest } from "../lib/validation.js";
 import {
-  PEACH_ENTITY_ID,
-  PEACH_ENV,
-  PEACH_SECRET,
-  initiateCheckoutAtPeach,
-} from "./peachClient.js";
-
-// Peach allows only ONE notification URL per account. The Plankton estate
-// already uses savePeachNotification on plankton-backstage, so all Peach
-// callbacks land there. SwiftPMS reads/forwards from that via the bridge
-// (see docs/peach-bridge.md).
-const PEACH_NOTIFICATION_URL =
-  "https://us-central1-plankton-backstage.cloudfunctions.net/savePeachNotification";
-
-function webhookUrl(): string {
-  return PEACH_NOTIFICATION_URL;
-}
+  PLANKTON_API_KEY,
+  PLANKTON_BASE_URL,
+  PLANKTON_SANDBOX,
+  PLANKTON_TENANT_ID,
+  createPlanktonPayment,
+} from "./planktonPaymentsClient.js";
 
 function genId(prefix: string): string {
   return `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
 }
 
-function centsToMajorString(cents: number): string {
-  return (cents / 100).toFixed(2);
-}
-
+/**
+ * Initiate a payment through the Plankton Payments platform (railways).
+ *
+ * Replaces the previous direct Peach HMAC-signing call. The platform now
+ * owns Peach interaction; we receive a paymentId + requiresAction.url. The
+ * client redirects the customer to that URL; on return we poll
+ * `syncPaymentStatus` (see syncPaymentStatus.ts) to settle the folio.
+ *
+ * The callable name is kept for backward-compatibility with the existing
+ * React client. Consider renaming to `initiatePayment` in a future pass.
+ */
 export const initiatePeachCheckout = onCall(
   {
     cors: true,
-    secrets: [PEACH_ENTITY_ID, PEACH_SECRET, PEACH_ENV],
+    secrets: [PLANKTON_API_KEY],
   },
   async (request) => {
     try {
@@ -99,32 +97,64 @@ export const initiatePeachCheckout = onCall(
       }
 
       const intentId = genId("pi");
-      const merchantTransactionId = genId("mtx");
       const paymentType = data.paymentType ?? "DB";
-      const amountMajor = centsToMajorString(data.amount);
       const currency = (folioData?.currency as string | undefined) ?? "ZAR";
 
-      // Build customer info from reservation/guest if available (best-effort).
-      const customerEmail = request.auth.token.email ?? undefined;
+      // Customer info — best-effort. Plankton's API requires givenName +
+      // surname. Pull from the linked Guest doc if present; otherwise use
+      // the auth user's email and a generic fallback name.
+      let givenName = "Guest";
+      let surname = "User";
+      let customerEmail = request.auth.token.email ?? undefined;
+      let customerMobile: string | undefined;
+      let guestIdForCustomer: string | null = null;
+      try {
+        // Get guestId from reservation
+        if (data.reservationId) {
+          const resSnap = await reservationRef(
+            tenantId,
+            propertyId,
+            data.reservationId,
+          ).get();
+          guestIdForCustomer = (resSnap.data()?.guestId as string) ?? null;
+        }
+        if (guestIdForCustomer) {
+          const gSnap = await guestRef(tenantId, guestIdForCustomer).get();
+          if (gSnap.exists) {
+            const g = gSnap.data()!;
+            givenName = (g.firstName as string) || givenName;
+            surname = (g.lastName as string) || surname;
+            customerEmail = (g.email as string) || customerEmail;
+            customerMobile = (g.phone as string) || undefined;
+          }
+        }
+      } catch {
+        // Best-effort; keep going with fallback values.
+      }
 
-      const { redirectUrl, checkoutId } = await initiateCheckoutAtPeach({
-        entityId: PEACH_ENTITY_ID.value(),
-        secret: PEACH_SECRET.value(),
-        amount: amountMajor,
+      const planktonRes = await createPlanktonPayment({
+        idempotencyKey: intentId,
+        amount: data.amount,
         currency,
-        paymentType,
-        merchantTransactionId,
-        nonce: intentId,
-        customerEmail,
-        shopperResultUrl: data.shopperResultUrl,
-        cancelUrl: data.shopperResultUrl,
-        notificationUrl: webhookUrl(),
-        customParameters: {
-          tenantId,
-          propertyId,
-          paymentIntentId: intentId,
+        paymentMethod: "card",
+        channel: "online",
+        captureMode: paymentType === "PA" ? "manual" : "automatic",
+        orderReference: data.reservationId ?? data.folioId ?? intentId,
+        returnUrl: data.shopperResultUrl,
+        customer: {
+          givenName,
+          surname,
+          email: customerEmail,
+          mobile: customerMobile,
         },
       });
+
+      const redirectUrl = planktonRes.requiresAction?.url;
+      if (!redirectUrl) {
+        throw new Error(
+          `Plankton response missing requiresAction.url (status=${planktonRes.status})`,
+        );
+      }
 
       const nowIso = new Date().toISOString();
       await paymentIntentRef(tenantId, propertyId, intentId).set({
@@ -137,12 +167,18 @@ export const initiatePeachCheckout = onCall(
         amount: data.amount,
         currency,
         status: PaymentIntentStatus.REDIRECTED,
-        peachCheckoutId: checkoutId ?? null,
+        // New Plankton-platform fields
+        planktonPaymentId: planktonRes.paymentId,
+        planktonTenantId: PLANKTON_TENANT_ID,
+        planktonSandbox: PLANKTON_SANDBOX.value() === "true",
+        planktonBaseUrl: PLANKTON_BASE_URL.value(),
+        // Legacy Peach-direct fields kept null for shape compatibility
+        peachCheckoutId: null,
         peachPaymentId: null,
         peachResultCode: null,
         peachResultDescription: null,
         paymentType,
-        merchantTransactionId,
+        merchantTransactionId: intentId,
         redirectUrl,
         shopperResultUrl: data.shopperResultUrl,
         initiatedBy: request.auth.uid,
@@ -163,6 +199,7 @@ export const initiatePeachCheckout = onCall(
           purpose: data.purpose,
           amount: data.amount,
           paymentType,
+          planktonPaymentId: planktonRes.paymentId,
           reservationId: data.reservationId ?? null,
           folioId: data.folioId ?? null,
         },
@@ -171,7 +208,8 @@ export const initiatePeachCheckout = onCall(
       return {
         paymentIntentId: intentId,
         redirectUrl,
-        merchantTransactionId,
+        merchantTransactionId: intentId,
+        planktonPaymentId: planktonRes.paymentId,
       };
     } catch (err) {
       if (err instanceof HttpsError) throw err;

@@ -9,11 +9,11 @@ import { formatCents } from "@swiftpms/shared";
 import type { Reservation } from "@swiftpms/shared";
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
-  confirmed: { bg: "bg-blue-50", text: "text-blue-700", label: "Confirmed" },
-  checked_in: { bg: "bg-green-50", text: "text-green-700", label: "Checked In" },
-  checked_out: { bg: "bg-gray-100", text: "text-gray-600", label: "Checked Out" },
-  cancelled: { bg: "bg-red-50", text: "text-red-700", label: "Cancelled" },
-  no_show: { bg: "bg-amber-50", text: "text-amber-700", label: "No Show" },
+  confirmed: { bg: "bg-leaf-soft", text: "text-leaf-foreground", label: "Confirmed" },
+  checked_in: { bg: "bg-primary/10", text: "text-primary", label: "Checked In" },
+  checked_out: { bg: "bg-muted", text: "text-muted-foreground", label: "Checked Out" },
+  cancelled: { bg: "bg-destructive/10", text: "text-destructive", label: "Cancelled" },
+  no_show: { bg: "bg-accent-soft", text: "text-accent-dark", label: "No Show" },
 };
 
 export function MyBookingsPage() {
@@ -98,59 +98,62 @@ export function MyBookingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-8 flex items-center justify-between">
+    <div className="mx-auto max-w-3xl px-6 py-10">
+      <div className="mb-8 flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
-            My Bookings
+          <span className="eyebrow text-accent">Your itinerary</span>
+          <h1 className="mt-2 font-display text-3xl font-semibold text-foreground sm:text-4xl">
+            My bookings
           </h1>
           {firstName && (
             <p className="mt-1 text-sm text-muted-foreground">
-              Welcome back, {firstName}
+              Welcome back, {firstName}.
             </p>
           )}
         </div>
         <button
           onClick={() => navigate("/")}
-          className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+          className="shrink-0 rounded-full bg-accent px-5 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card"
         >
-          New Booking
+          + New Booking
         </button>
       </div>
 
       {loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-20">
+          <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
         </div>
       )}
 
       {error && (
-        <div className="mb-6 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
+        <div className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
       {!loading && !error && bookings.length === 0 && (
-        <div className="rounded-xl border border-border bg-white py-16 text-center shadow-sm">
-          <svg
-            className="mx-auto mb-4 h-12 w-12 text-muted-foreground/40"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={1}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
-            />
-          </svg>
+        <div className="rounded-2xl border border-border bg-surface py-16 text-center shadow-soft">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-leaf-soft">
+            <svg
+              className="h-8 w-8 text-leaf"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.5}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5"
+              />
+            </svg>
+          </div>
           <p className="text-muted-foreground">
             You don't have any bookings yet.
           </p>
           <button
             onClick={() => navigate("/")}
-            className="mt-4 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            className="mt-5 rounded-full bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card"
           >
             Browse Rooms
           </button>
@@ -171,7 +174,7 @@ export function MyBookingsPage() {
           return (
             <div
               key={booking.id}
-              className="overflow-hidden rounded-xl border border-border bg-white shadow-sm"
+              className="overflow-hidden rounded-2xl border border-border bg-surface shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:shadow-card"
             >
               <div className="p-5 sm:p-6">
                 <div className="mb-3 flex items-start justify-between">
@@ -243,7 +246,7 @@ export function MyBookingsPage() {
                     {booking.children > 0 &&
                       `, ${booking.children} ${booking.children === 1 ? "child" : "children"}`}
                   </div>
-                  <div className="text-lg font-bold text-foreground">
+                  <div className="font-display text-xl font-semibold text-primary">
                     {formatCents(booking.totalRoomCharges)}
                   </div>
                 </div>
@@ -251,7 +254,7 @@ export function MyBookingsPage() {
                 <div className="mt-3 flex justify-end border-t border-border pt-3">
                   <button
                     onClick={() => handleDownload(booking)}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary"
                   >
                     <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />

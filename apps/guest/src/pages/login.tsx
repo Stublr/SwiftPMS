@@ -3,8 +3,12 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { guestLogin, guestRegister } from "@/services/auth";
+import { BrandMark } from "@/components/brand/logo";
 
 type AuthTab = "login" | "register";
+
+const fieldInput =
+  "w-full rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/50 transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30";
 
 export function LoginPage() {
   const navigate = useUIStore((s) => s.navigate);
@@ -19,7 +23,6 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) navigate("/my-bookings");
   }, [isAuthenticated, navigate]);
@@ -49,71 +52,57 @@ export function LoginPage() {
       }
       navigate("/my-bookings");
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Authentication failed.",
-      );
+      setError(err instanceof Error ? err.message : "Authentication failed.");
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="flex min-h-[calc(100vh-64px)] items-center justify-center px-4 py-12">
+    <div className="flex min-h-[calc(100vh-4.5rem)] items-center justify-center px-6 py-16">
       <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-foreground">
-            {tab === "login" ? "Welcome Back" : "Create an Account"}
+        <div className="mb-8 flex flex-col items-center text-center">
+          <BrandMark className="mb-5 h-12 w-12" />
+          <span className="eyebrow text-accent">
+            {tab === "login" ? "Welcome back" : "Join the escape"}
+          </span>
+          <h1 className="mt-2 font-display text-3xl font-semibold text-foreground">
+            {tab === "login" ? "Sign in to ALGAFUSION" : "Create your account"}
           </h1>
           <p className="mt-2 text-sm text-muted-foreground">
             {tab === "login"
-              ? "Sign in to manage your bookings and reservations."
-              : "Register to book rooms and manage your stays."}
+              ? "Access your itinerary and manage your reservations."
+              : "Register to book rooms and keep track of your stays."}
           </p>
         </div>
 
-        <div className="rounded-xl border border-border bg-white p-6 shadow-sm sm:p-8">
+        <div className="rounded-2xl border border-border bg-surface p-6 shadow-card sm:p-8">
           {/* Tabs */}
-          <div className="mb-6 flex border-b border-border">
-            <button
+          <div className="mb-6 grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+            <TabButton
+              active={tab === "login"}
               onClick={() => {
                 setTab("login");
                 setError(null);
               }}
-              className={cn(
-                "flex-1 pb-3 text-center text-sm font-medium transition-colors",
-                tab === "login"
-                  ? "border-b-2 border-primary text-primary"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
             >
               Sign In
-            </button>
-            <button
+            </TabButton>
+            <TabButton
+              active={tab === "register"}
               onClick={() => {
                 setTab("register");
                 setError(null);
               }}
-              className={cn(
-                "flex-1 pb-3 text-center text-sm font-medium transition-colors",
-                tab === "register"
-                  ? "border-b-2 border-primary text-primary"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
             >
               Register
-            </button>
+            </TabButton>
           </div>
 
           <form onSubmit={handleSubmit}>
             {tab === "register" && (
               <div className="mb-4 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <label
-                    htmlFor="firstName"
-                    className="mb-1 block text-sm font-medium text-foreground"
-                  >
-                    First Name
-                  </label>
+                <Labeled label="First Name" htmlFor="firstName">
                   <input
                     id="firstName"
                     type="text"
@@ -121,16 +110,10 @@ export function LoginPage() {
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     placeholder="John"
-                    className="w-full rounded-lg border border-border px-3 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={fieldInput}
                   />
-                </div>
-                <div>
-                  <label
-                    htmlFor="lastName"
-                    className="mb-1 block text-sm font-medium text-foreground"
-                  >
-                    Last Name
-                  </label>
+                </Labeled>
+                <Labeled label="Last Name" htmlFor="lastName">
                   <input
                     id="lastName"
                     type="text"
@@ -138,70 +121,60 @@ export function LoginPage() {
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     placeholder="Doe"
-                    className="w-full rounded-lg border border-border px-3 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
+                    className={fieldInput}
                   />
-                </div>
+                </Labeled>
               </div>
             )}
 
             <div className="mb-4">
-              <label
-                htmlFor="email"
-                className="mb-1 block text-sm font-medium text-foreground"
-              >
-                Email Address
-              </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                className="w-full rounded-lg border border-border px-3 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
+              <Labeled label="Email Address" htmlFor="email">
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={fieldInput}
+                />
+              </Labeled>
             </div>
 
             <div className="mb-4">
-              <label
-                htmlFor="password"
-                className="mb-1 block text-sm font-medium text-foreground"
-              >
-                Password
-              </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                className="w-full rounded-lg border border-border px-3 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
-              />
+              <Labeled label="Password" htmlFor="password">
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className={fieldInput}
+                />
+              </Labeled>
             </div>
 
             {tab === "register" && (
               <div className="mb-4">
-                <label
+                <Labeled
+                  label="Phone Number (optional)"
                   htmlFor="phone"
-                  className="mb-1 block text-sm font-medium text-foreground"
                 >
-                  Phone Number{" "}
-                  <span className="text-muted-foreground">(optional)</span>
-                </label>
-                <input
-                  id="phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+27 82 123 4567"
-                  className="w-full rounded-lg border border-border px-3 py-2.5 text-sm placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary"
-                />
+                  <input
+                    id="phone"
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="+27 82 123 4567"
+                    className={fieldInput}
+                  />
+                </Labeled>
               </div>
             )}
 
             {error && (
-              <div className="mb-4 rounded-lg border border-destructive/20 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              <div className="mb-4 rounded-xl border border-destructive/20 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
                 {error}
               </div>
             )}
@@ -209,10 +182,13 @@ export function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:opacity-50"
+              className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card disabled:opacity-50"
             >
+              {loading && (
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent-foreground/40 border-t-accent-foreground" />
+              )}
               {loading
-                ? "Please wait..."
+                ? "Please wait…"
                 : tab === "login"
                   ? "Sign In"
                   : "Create Account"}
@@ -223,12 +199,59 @@ export function LoginPage() {
         <p className="mt-6 text-center text-sm text-muted-foreground">
           <button
             onClick={() => navigate("/")}
-            className="font-medium text-primary hover:underline"
+            className="font-medium text-primary transition-colors hover:text-accent"
           >
-            Back to Home
+            &larr; Back to Home
           </button>
         </p>
       </div>
+    </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-lg py-2 text-sm font-semibold transition-all",
+        active
+          ? "bg-surface text-primary shadow-soft"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Labeled({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  htmlFor: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={htmlFor}
+        className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-muted-foreground"
+      >
+        {label}
+      </label>
+      {children}
     </div>
   );
 }

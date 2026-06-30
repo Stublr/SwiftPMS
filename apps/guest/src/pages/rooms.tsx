@@ -7,6 +7,7 @@ import {
   type AvailableRoomType,
 } from "@/services/availability";
 import { getAllProperties, type PropertyInfo } from "@/services/property";
+import { BrandMark } from "@/components/brand/logo";
 import { formatCents } from "@swiftpms/shared";
 
 interface PropertyAvailability {
@@ -35,37 +36,32 @@ export function RoomsPage() {
   const today = new Date().toISOString().split("T")[0];
   const hasDates = !!checkInDate && !!checkOutDate;
 
-  // Load all properties on mount
   useEffect(() => {
     getAllProperties()
       .then((props) => {
-        setProperties(props.map((p) => ({ property: p, rooms: [], loading: false, error: null })));
+        setProperties(
+          props.map((p) => ({ property: p, rooms: [], loading: false, error: null })),
+        );
       })
       .catch(() => {})
       .finally(() => setLoadingProps(false));
   }, []);
 
-  // When dates or guest count change, fetch availability for all properties
   useEffect(() => {
     if (!hasDates || properties.length === 0) return;
     fetchAllAvailability(checkInDate, checkOutDate);
   }, [checkInDate, checkOutDate, totalGuests, properties.length]);
 
   async function fetchAllAvailability(ci: string, co: string) {
-    setProperties((prev) =>
-      prev.map((p) => ({ ...p, loading: true, error: null })),
-    );
+    setProperties((prev) => prev.map((p) => ({ ...p, loading: true, error: null })));
 
     for (const pa of properties) {
       try {
         const allRooms = await checkAvailability(ci, co, pa.property.id);
-        // Filter to room types that can accommodate the total guest count
         const rooms = allRooms.filter((r) => r.maxOccupancy >= totalGuests);
         setProperties((prev) =>
           prev.map((p) =>
-            p.property.id === pa.property.id
-              ? { ...p, rooms, loading: false }
-              : p,
+            p.property.id === pa.property.id ? { ...p, rooms, loading: false } : p,
           ),
         );
       } catch {
@@ -98,10 +94,10 @@ export function RoomsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
+    <div className="mx-auto max-w-6xl px-6 py-10">
       <button
         onClick={() => navigate("/")}
-        className="mb-6 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
       >
         <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
@@ -109,60 +105,62 @@ export function RoomsPage() {
         Back to Search
       </button>
 
-      <h1 className="mb-2 text-2xl font-bold text-foreground sm:text-3xl">
-        Available Campsites
+      <span className="eyebrow text-accent">Availability</span>
+      <h1 className="mt-2 font-display text-3xl font-semibold text-foreground sm:text-4xl">
+        Choose your room
       </h1>
 
       {/* Date Bar */}
       {hasDates ? (
-        <div className="mb-8 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/50 px-4 py-3">
-          <span className="text-sm text-muted-foreground">
-            {new Date(checkInDate + "T00:00:00").toLocaleDateString("en-ZA", {
+        <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border bg-surface px-5 py-4 shadow-soft">
+          <DateChip
+            label={new Date(checkInDate + "T00:00:00").toLocaleDateString("en-ZA", {
               weekday: "short", day: "numeric", month: "short", year: "numeric",
             })}
-          </span>
-          <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          />
+          <svg className="h-4 w-4 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
           </svg>
-          <span className="text-sm text-muted-foreground">
-            {new Date(checkOutDate + "T00:00:00").toLocaleDateString("en-ZA", {
+          <DateChip
+            label={new Date(checkOutDate + "T00:00:00").toLocaleDateString("en-ZA", {
               weekday: "short", day: "numeric", month: "short", year: "numeric",
             })}
-          </span>
-          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {nightCount(checkInDate, checkOutDate)} {nightCount(checkInDate, checkOutDate) === 1 ? "night" : "nights"}
-          </span>
-          <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-            {adults} {adults === 1 ? "guest" : "guests"}
+          />
+          <span className="ml-auto flex flex-wrap gap-2">
+            <Pill>
+              {nightCount(checkInDate, checkOutDate)}{" "}
+              {nightCount(checkInDate, checkOutDate) === 1 ? "night" : "nights"}
+            </Pill>
+            <Pill>{adults + children} {adults + children === 1 ? "guest" : "guests"}</Pill>
           </span>
         </div>
       ) : (
-        <div className="mb-8 rounded-lg border border-border bg-white p-6 shadow-sm">
+        <div className="mt-6 rounded-2xl border border-border bg-surface p-6 shadow-soft">
           <p className="mb-4 text-sm text-muted-foreground">
-            Select your dates to see available campsites.
+            Select your dates to see available rooms across all lodges.
           </p>
           <div className="flex flex-wrap items-end gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground">Check-in</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Check-in</label>
               <input
                 type="date" value={localCheckIn} min={today}
                 onChange={(e) => setLocalCheckIn(e.target.value)}
-                className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={fieldInput}
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-foreground">Check-out</label>
+              <label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Check-out</label>
               <input
                 type="date" value={localCheckOut}
                 min={localCheckIn ? new Date(new Date(localCheckIn).getTime() + 86400000).toISOString().split("T")[0] : today}
                 onChange={(e) => setLocalCheckOut(e.target.value)}
-                className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                className={fieldInput}
               />
             </div>
             <button
               onClick={handleDateSearch}
               disabled={!localCheckIn || !localCheckOut}
-              className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card disabled:opacity-50"
             >
               Search
             </button>
@@ -171,50 +169,49 @@ export function RoomsPage() {
       )}
 
       {loadingProps && (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="flex items-center justify-center py-20">
+          <Spinner />
         </div>
       )}
 
-      {/* Properties + Rooms */}
       {!loadingProps && properties.length === 0 && (
-        <p className="text-center text-muted-foreground">No campsites available.</p>
+        <p className="py-16 text-center text-muted-foreground">No lodges available.</p>
       )}
 
-      <div className="space-y-10">
+      <div className="mt-10 space-y-14">
         {properties.map(({ property, rooms, loading, error }) => (
           <div key={property.id}>
-            {/* Property Header */}
-            <div className="mb-4 border-b border-border pb-3">
-              <h2 className="text-xl font-bold text-foreground">{property.name}</h2>
-              {property.address && (
-                <p className="mt-0.5 text-sm text-muted-foreground">{property.address}</p>
-              )}
-              {property.description && (
-                <p className="mt-1 text-sm text-muted-foreground">{property.description}</p>
-              )}
+            <div className="mb-6 flex items-end justify-between border-b border-border pb-4">
+              <div>
+                <h2 className="font-display text-2xl font-semibold text-foreground">
+                  {property.name}
+                </h2>
+                {property.address && (
+                  <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
+                    <svg className="h-3.5 w-3.5 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+                    </svg>
+                    {property.address}
+                  </p>
+                )}
+              </div>
             </div>
 
             {loading && (
-              <div className="flex items-center justify-center py-8">
-                <div className="h-6 w-6 animate-spin rounded-full border-3 border-primary border-t-transparent" />
+              <div className="flex items-center justify-center py-10">
+                <Spinner />
               </div>
             )}
 
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
             {!loading && hasDates && rooms.filter((r) => r.available > 0).length === 0 && !error && (
-              <p className="py-4 text-sm text-muted-foreground">
-                No campsites available at this property for the selected dates.
-              </p>
+              <EmptyNote>No rooms available at this lodge for the selected dates.</EmptyNote>
             )}
 
             {!hasDates && !loading && (
-              <p className="py-4 text-sm text-muted-foreground">
-                Select dates above to see availability.
-              </p>
+              <EmptyNote>Select dates above to see availability.</EmptyNote>
             )}
 
             <div className="grid gap-6">
@@ -234,6 +231,33 @@ export function RoomsPage() {
   );
 }
 
+const fieldInput =
+  "rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground transition-colors focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/30";
+
+function Spinner() {
+  return <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />;
+}
+
+function DateChip({ label }: { label: string }) {
+  return <span className="text-sm font-medium text-foreground">{label}</span>;
+}
+
+function Pill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+      {children}
+    </span>
+  );
+}
+
+function EmptyNote({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-border bg-muted/40 px-5 py-8 text-center text-sm text-muted-foreground">
+      {children}
+    </div>
+  );
+}
+
 function RoomTypeCard({
   room,
   nights,
@@ -243,48 +267,52 @@ function RoomTypeCard({
   nights: number;
   onBook: () => void;
 }) {
+  const badge =
+    room.available > 3
+      ? "bg-leaf-soft text-leaf-foreground"
+      : room.available > 0
+        ? "bg-accent-soft text-accent-dark"
+        : "bg-destructive/10 text-destructive";
+
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-shadow hover:shadow-md">
+    <div className="group overflow-hidden rounded-2xl border border-border bg-surface shadow-soft transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lift">
       <div className="flex flex-col sm:flex-row">
-        <div className="flex h-48 w-full items-center justify-center bg-gradient-to-br from-sky-100 to-cyan-50 sm:h-auto sm:w-64">
+        <div className="relative h-52 w-full overflow-hidden sm:h-auto sm:w-72">
           {room.imageUrls.length > 0 ? (
-            <img src={room.imageUrls[0]} alt={room.name} className="h-full w-full object-cover" />
+            <img
+              src={room.imageUrls[0]}
+              alt={room.name}
+              className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
+            />
           ) : (
-            <svg className="h-16 w-16 text-sky-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75m-.75 3h.75m-.75 3h.75m3-6h.75m-.75 3h.75m-.75 3h.75M6.75 21v-3.375c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21M3 3h12m-.75 4.5H21m-3.75 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008zm0 3h.008v.008h-.008v-.008z" />
-            </svg>
+            <div className="bg-placeholder flex h-full min-h-52 items-center justify-center">
+              <BrandMark className="h-12 w-12 opacity-40" />
+            </div>
           )}
         </div>
 
-        <div className="flex flex-1 flex-col justify-between p-5 sm:p-6">
+        <div className="flex flex-1 flex-col justify-between p-6">
           <div>
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-foreground">{room.name}</h3>
-              <span
-                className={cn(
-                  "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  room.available > 3 ? "bg-green-50 text-green-700"
-                    : room.available > 0 ? "bg-amber-50 text-amber-700"
-                    : "bg-red-50 text-red-700",
-                )}
-              >
-                {room.available > 0 ? `${room.available} available` : "Sold out"}
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <h3 className="font-display text-xl font-semibold text-foreground">{room.name}</h3>
+              <span className={cn("shrink-0 rounded-full px-3 py-1 text-xs font-semibold", badge)}>
+                {room.available > 0 ? `${room.available} left` : "Sold out"}
               </span>
             </div>
 
             {room.description && (
-              <p className="mb-3 text-sm leading-relaxed text-muted-foreground">{room.description}</p>
+              <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{room.description}</p>
             )}
 
-            <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <svg className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
                 </svg>
                 Up to {room.maxOccupancy} guests
               </span>
-              <span className="flex items-center gap-1">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <span className="flex items-center gap-1.5">
+                <svg className="h-4 w-4 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.6}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
                 </svg>
                 {room.bedConfiguration}
@@ -294,40 +322,36 @@ function RoomTypeCard({
             {room.amenities.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {room.amenities.map((amenity) => (
-                  <span key={amenity} className="rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    {amenity.replace("_", " ")}
+                  <span key={amenity} className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium capitalize text-muted-foreground">
+                    {amenity.replace(/_/g, " ")}
                   </span>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="mt-4 flex items-end justify-between border-t border-border pt-4">
+          <div className="mt-5 flex items-end justify-between border-t border-border pt-5">
             <div>
               {room.tieredPricing ? (
                 <>
-                  <span className="text-2xl font-bold text-foreground">
+                  <span className="font-display text-2xl font-semibold text-foreground">
                     {formatCents(room.tieredPricing.standard.baseRate)}
                   </span>
-                  <span className="text-sm text-muted-foreground">
-                    {" "}per person / night
-                  </span>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  <span className="text-sm text-muted-foreground"> per person / night</span>
+                  <p className="mt-1 text-xs text-muted-foreground">
                     Children under {room.tieredPricing.childAgeMax + 1}:{" "}
-                    {formatCents(room.tieredPricing.standard.extraChild)}/night •
-                    High season rates apply on peak dates
+                    {formatCents(room.tieredPricing.standard.extraChild)}/night • High season rates apply on peak dates
                   </p>
                 </>
               ) : (
                 <>
-                  <span className="text-2xl font-bold text-foreground">
+                  <span className="font-display text-2xl font-semibold text-foreground">
                     {formatCents(room.baseRate)}
                   </span>
                   <span className="text-sm text-muted-foreground"> / night</span>
                   {nights > 1 && (
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {formatCents(room.baseRate * nights)} total for {nights}{" "}
-                      nights
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {formatCents(room.baseRate * nights)} total for {nights} nights
                     </p>
                   )}
                 </>
@@ -336,7 +360,7 @@ function RoomTypeCard({
             <button
               onClick={onBook}
               disabled={room.available === 0}
-              className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card disabled:cursor-not-allowed disabled:opacity-50"
             >
               Book Now
             </button>

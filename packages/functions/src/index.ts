@@ -12,11 +12,10 @@ export { checkOut } from "./reservations/checkOut.js";
 // Billing functions
 export { addCharge } from "./billing/addCharge.js";
 export { processPayment } from "./billing/processPayment.js";
+// initiatePeachCheckout now calls the Plankton Payments platform (railways).
+// Name kept for backward compatibility with deployed client builds.
 export { initiatePeachCheckout } from "./billing/initiatePeachCheckout.js";
-// peachWebhook intentionally NOT exported. Peach allows only one notification
-// URL per account and the Plankton estate's `savePeachNotification` on
-// plankton-backstage owns it. Result-to-folio bridging is a cross-project
-// listener (see docs/peach-bridge.md) — not a webhook on this project.
+export { syncPaymentStatus } from "./billing/syncPaymentStatus.js";
 
 // Room functions
 export { updateRoomStatus } from "./rooms/updateRoomStatus.js";

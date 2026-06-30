@@ -183,7 +183,7 @@ export function BookingPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-24">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
       </div>
     );
   }
@@ -230,8 +230,9 @@ export function BookingPage() {
         Back to Rooms
       </button>
 
-      <h1 className="mb-8 text-2xl font-bold text-foreground sm:text-3xl">
-        Complete Your Booking
+      <span className="eyebrow text-accent">Almost there</span>
+      <h1 className="mb-8 mt-2 font-display text-3xl font-semibold text-foreground sm:text-4xl">
+        Complete your booking
       </h1>
 
       <div className="grid gap-8 lg:grid-cols-3">
@@ -239,8 +240,8 @@ export function BookingPage() {
         <div className="lg:col-span-2">
           {/* Room Info */}
           {roomType && (
-            <div className="mb-6 rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="mb-1 text-lg font-semibold text-foreground">
+            <div className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-soft">
+              <h2 className="mb-1 font-display text-xl font-semibold text-foreground">
                 {roomType.name}
               </h2>
               <p className="text-sm text-muted-foreground">
@@ -257,8 +258,8 @@ export function BookingPage() {
 
           {/* Guest Details / Auth */}
           {isAuthenticated ? (
-            <div className="mb-6 rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
+            <div className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-soft">
+              <h2 className="mb-4 font-display text-lg font-semibold text-foreground">
                 Guest Details
               </h2>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -289,8 +290,8 @@ export function BookingPage() {
               </div>
             </div>
           ) : (
-            <div className="mb-6 rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="mb-4 text-lg font-semibold text-foreground">
+            <div className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-soft">
+              <h2 className="mb-4 font-display text-lg font-semibold text-foreground">
                 Sign in to continue
               </h2>
               <p className="mb-4 text-sm text-muted-foreground">
@@ -415,8 +416,8 @@ export function BookingPage() {
 
           {/* Special Requests */}
           {isAuthenticated && (
-            <div className="mb-6 rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="mb-3 text-lg font-semibold text-foreground">
+            <div className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-soft">
+              <h2 className="mb-3 font-display text-lg font-semibold text-foreground">
                 Special Requests
               </h2>
               <textarea
@@ -436,8 +437,8 @@ export function BookingPage() {
 
         {/* Booking Summary Sidebar */}
         <div className="lg:col-span-1">
-          <div className="sticky top-8 rounded-xl border border-border bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-lg font-semibold text-foreground">
+          <div className="sticky top-24 rounded-2xl border border-border bg-surface p-6 shadow-card">
+            <h2 className="mb-4 font-display text-lg font-semibold text-foreground">
               Booking Summary
             </h2>
 
@@ -593,9 +594,21 @@ export function BookingPage() {
             <button
               onClick={handleConfirmBooking}
               disabled={!isAuthenticated || submitting || !roomType}
-              className="mt-6 w-full rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+              className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-3.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {submitting ? "Confirming..." : "Confirm Booking"}
+              {submitting ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent-foreground/40 border-t-accent-foreground" />
+                  Confirming…
+                </>
+              ) : (
+                <>
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                  </svg>
+                  Confirm &amp; Pay
+                </>
+              )}
             </button>
 
             {!isAuthenticated && (
