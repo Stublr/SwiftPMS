@@ -2,18 +2,37 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Tenant-scoped storage: tenants/{tenantId}/...
+
+    // Property images — publicly readable so the guest portal can render
+    // photos before login. Path convention: tenants/{tenantId}/properties/...
+    match /tenants/{tenantId}/properties/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.tenantId == tenantId
+                   && (request.auth.token.role == 'super_admin'
+                       || request.auth.token.role == 'property_manager');
+    }
+
+    // Room type images — public read for the same reason
+    match /tenants/{tenantId}/roomTypes/{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && request.auth.token.tenantId == tenantId
+                   && (request.auth.token.role == 'super_admin'
+                       || request.auth.token.role == 'property_manager');
+    }
+
+    // Everything else under the tenant — tenant members read, manager+ writes
     match /tenants/{tenantId}/{allPaths=**} {
       allow read: if request.auth != null
                   && request.auth.token.tenantId == tenantId;
       allow write: if request.auth != null
                    && request.auth.token.tenantId == tenantId
-                   && (request.auth.token.role == 'admin'
-                       || request.auth.token.role == 'owner'
-                       || request.auth.token.role == 'manager');
+                   && (request.auth.token.role == 'super_admin'
+                       || request.auth.token.role == 'property_manager');
     }
 
-    // Block all other paths
+    // Everything else — denied
     match /{allPaths=**} {
       allow read, write: if false;
     }

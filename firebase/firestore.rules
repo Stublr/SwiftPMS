@@ -12,7 +12,7 @@ service cloud.firestore {
     }
 
     function hasRole(role) {
-      return request.auth.token.role == role;
+      return isAuthenticated() && request.auth.token.role == role;
     }
 
     function isAdmin() {
@@ -24,15 +24,36 @@ service cloud.firestore {
     }
 
     function isStaff() {
-      return hasRole('super_admin') || hasRole('property_manager') || hasRole('front_desk') || hasRole('housekeeping') || hasRole('auditor');
+      return hasRole('super_admin')
+          || hasRole('property_manager')
+          || hasRole('front_desk')
+          || hasRole('housekeeping')
+          || hasRole('auditor');
     }
 
     function isGuest() {
       return hasRole('guest');
     }
 
+    function tenantStaff(tenantId) {
+      return belongsToTenant(tenantId) && isStaff();
+    }
+
+    function ownsGuestDoc(guestId) {
+      // createGuestAccount uses Firebase Auth UID as the guest doc ID.
+      return isAuthenticated() && request.auth.uid == guestId;
+    }
+
+    function isOwnReservation() {
+      return isAuthenticated()
+          && resource != null
+          && resource.data.guestId == request.auth.uid;
+    }
+
     function hasPropertyAccess(propertyId) {
-      return request.auth.token.propertyIds.hasAny([propertyId]);
+      return isAuthenticated()
+          && request.auth.token.propertyIds != null
+          && request.auth.token.propertyIds.hasAny([propertyId]);
     }
 
     // Tenant root
@@ -40,68 +61,77 @@ service cloud.firestore {
       allow read: if belongsToTenant(tenantId);
       allow write: if belongsToTenant(tenantId) && isAdmin();
 
-      // Users — admin only for writes
+      // Users — staff can read each other for assignment UI; only admins can write
       match /users/{userId} {
-        allow read: if belongsToTenant(tenantId) && isStaff();
+        allow read: if tenantStaff(tenantId);
         allow write: if belongsToTenant(tenantId) && isAdmin();
       }
 
-      // Guests — staff can CRUD, guests can read their own
+      // Guests — staff CRUD; guests read only their own doc
       match /guests/{guestId} {
-        allow read: if belongsToTenant(tenantId);
-        allow create, update: if belongsToTenant(tenantId) && isStaff();
+        allow read: if tenantStaff(tenantId) || ownsGuestDoc(guestId);
+        allow create, update: if tenantStaff(tenantId);
         allow delete: if belongsToTenant(tenantId) && isManager();
       }
 
-      // Room Types — admin/manager can manage. Active room types are
-      // publicly readable so the guest portal can browse before signup.
+      // Room Types — public read of ACTIVE types (guest portal browses
+      // before login). Tenant members read all. Manager+ writes.
       match /roomTypes/{roomTypeId} {
-        allow read: if (resource == null || resource.data.isActive == true) || belongsToTenant(tenantId);
+        allow read: if (resource == null || resource.data.isActive == true)
+                    || belongsToTenant(tenantId);
         allow write: if belongsToTenant(tenantId) && isManager();
       }
 
-      // Audit log — Cloud Functions only for writes, managers can read
+      // Audit log — Cloud Functions write, managers read
       match /auditLog/{logId} {
         allow read: if belongsToTenant(tenantId) && isManager();
         allow write: if false;
       }
 
-      // Properties — active properties are publicly readable so the
-      // guest portal can browse before signup. Tenant members can read all
-      // (including inactive). Writes are admin-only.
+      // Properties — public read of ACTIVE properties (guest portal browses
+      // before login). Tenant members read all. Admin writes.
       match /properties/{propertyId} {
-        allow read: if (resource == null || resource.data.isActive == true) || belongsToTenant(tenantId);
+        allow read: if (resource == null || resource.data.isActive == true)
+                    || belongsToTenant(tenantId);
         allow write: if belongsToTenant(tenantId) && isAdmin();
 
-        // Rooms — publicly readable (capacity / images / status are not sensitive).
-        // Tenant staff manage writes per role.
+        // Rooms — public read (capacity / status not sensitive; the guest
+        // portal's checkAvailability also reads them). Staff with access write.
         match /rooms/{roomId} {
           allow read: if true;
-          allow create, update: if belongsToTenant(tenantId) && (isAdmin() || (isStaff() && hasPropertyAccess(propertyId)));
+          allow create, update: if belongsToTenant(tenantId)
+                                  && (isAdmin()
+                                      || (isStaff() && hasPropertyAccess(propertyId)));
           allow delete: if belongsToTenant(tenantId) && isManager();
         }
 
-        // Reservations — Cloud Functions for mutations, staff can read
+        // Reservations — staff read all; guests read only their own.
+        // Mutations are Cloud Functions only (rules deny direct writes).
         match /reservations/{reservationId} {
-          allow read: if belongsToTenant(tenantId);
+          allow read: if tenantStaff(tenantId) || isOwnReservation();
           allow write: if false;
         }
 
-        // Folios — Cloud Functions for mutations, staff can read
+        // Folios — staff read all; guests read only the folio for their
+        // own reservation (folio.guestId carries the same UID).
         match /folios/{folioId} {
-          allow read: if belongsToTenant(tenantId);
+          allow read: if tenantStaff(tenantId) || isOwnReservation();
           allow write: if false;
         }
 
-        // Daily aggregates — Cloud Functions write, staff read
+        // Daily aggregates — staff (auditor+) only. Not public.
         match /dailyAggregates/{date} {
-          allow read: if belongsToTenant(tenantId);
+          allow read: if tenantStaff(tenantId);
           allow write: if false;
         }
 
-        // Payment intents — Cloud Functions write, tenant members can read
+        // Payment intents — staff read all; the initiating user reads their own
+        // (initiatedBy carries the auth UID). Cloud Functions write.
         match /paymentIntents/{paymentIntentId} {
-          allow read: if belongsToTenant(tenantId);
+          allow read: if tenantStaff(tenantId)
+                       || (isAuthenticated()
+                           && resource != null
+                           && resource.data.initiatedBy == request.auth.uid);
           allow write: if false;
         }
       }
