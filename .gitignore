@@ -41,12 +41,5 @@ ui-debug.log
 pubsub-debug.log
 storage-debug.log
 
-# Flutter
-apps/mobile/.dart_tool/
-apps/mobile/.packages
-apps/mobile/build/
-apps/mobile/.flutter-plugins
-apps/mobile/.flutter-plugins-dependencies
-
 # MinIO data
 minio_data/
