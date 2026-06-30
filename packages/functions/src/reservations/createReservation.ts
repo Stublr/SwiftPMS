@@ -24,6 +24,21 @@ export const createReservation = onCall({ cors: true }, async (request) => {
 
     const data = validateRequest(createReservationSchema, request.data);
 
+    // Idempotency check (pre-transaction). If the client sent a
+    // clientRequestId we've seen before, return the existing reservation
+    // without creating a duplicate. The query runs outside the transaction
+    // — the small race window is bounded by the txn's own write below
+    // (Firestore retries the txn if anything it read changed).
+    if (data.clientRequestId) {
+      const existingSnap = await reservationsRef(tenantId, propertyId)
+        .where("clientRequestId", "==", data.clientRequestId)
+        .limit(1)
+        .get();
+      if (!existingSnap.empty) {
+        return { id: existingSnap.docs[0]!.id };
+      }
+    }
+
     const result = await db.runTransaction(async (tx) => {
       // Verify guest exists
       const guestSnap = await tx.get(guestRef(tenantId, data.guestId));
@@ -34,13 +49,39 @@ export const createReservation = onCall({ cors: true }, async (request) => {
       if (!rtSnap.exists) throw notFound("Room type not found");
       const roomType = rtSnap.data()!;
 
-      // Check room availability if specific room is requested
+      // Check room availability if specific room is requested.
+      // Two checks: (1) current status, (2) no overlapping reservation on
+      // the same room for the requested date range. A room can be
+      // `available` right now yet already reserved for a future stay —
+      // the staff path previously missed that and double-booked.
       if (data.roomId) {
         const roomSnap = await tx.get(roomRef(tenantId, propertyId, data.roomId));
         if (!roomSnap.exists) throw notFound("Room not found");
         const room = roomSnap.data()!;
         if (room.status !== "available") {
           throw preconditionFailed("Room is not available");
+        }
+
+        // Overlap query: any non-terminal reservation on this room whose
+        // window touches the requested window. Reservation overlap rule:
+        //   existing.checkInDate < new.checkOutDate AND
+        //   existing.checkOutDate > new.checkInDate
+        const overlapping = await tx.get(
+          reservationsRef(tenantId, propertyId)
+            .where("roomId", "==", data.roomId)
+            .where("status", "in", ["confirmed", "checked_in"]),
+        );
+        const conflict = overlapping.docs.find((d) => {
+          const r = d.data();
+          return (
+            (r.checkInDate as string) < data.checkOutDate &&
+            (r.checkOutDate as string) > data.checkInDate
+          );
+        });
+        if (conflict) {
+          throw preconditionFailed(
+            `Room already has a ${conflict.data().status} reservation overlapping these dates`,
+          );
         }
       }
 
@@ -90,6 +131,7 @@ export const createReservation = onCall({ cors: true }, async (request) => {
         specialRequests: data.specialRequests ?? null,
         source: "front_desk",
         createdBy: request.auth!.uid,
+        clientRequestId: data.clientRequestId ?? null,
         checkedInAt: null,
         checkedInBy: null,
         checkedOutAt: null,

@@ -71,8 +71,6 @@ export function PeachPayButton({
       setError("Property not selected");
       return;
     }
-    // Snapshot for closures — TypeScript can't narrow the store selectors
-    // across async boundaries.
     const propId: string = propertyId;
     const tenId: string = tenantId;
     if (amountCents <= 0) {
@@ -82,6 +80,32 @@ export function PeachPayButton({
 
     setError(null);
     setSubmitting(true);
+
+    // CRITICAL: open the popup SYNCHRONOUSLY before any await — Chrome (and
+    // Android) blocks window.open() that loses the user-gesture token. We
+    // open a blank popup now, then redirect it to Peach's URL once
+    // initiatePeachCheckout resolves.
+    const w = window.open(
+      "about:blank",
+      "swiftpms-peach-pay",
+      "width=520,height=720,resizable=yes,scrollbars=yes",
+    );
+    if (!w) {
+      setError(
+        "Popup blocked. Please allow popups for this site and try again.",
+      );
+      setSubmitting(false);
+      return;
+    }
+    // Friendly loading state inside the popup while we call our backend.
+    try {
+      w.document.write(
+        `<!doctype html><meta charset=utf-8><title>SwiftPMS Payment</title><body style="font-family:system-ui;padding:32px;text-align:center;color:#0f172a;">Preparing secure payment…</body>`,
+      );
+    } catch {
+      // ignore — some browsers restrict document.write on blank
+    }
+    popupRef.current = w;
 
     try {
       const shopperResultUrl = `${window.location.origin}/?payment_return=1`;
@@ -95,13 +119,13 @@ export function PeachPayButton({
         shopperResultUrl,
       });
 
-      // Open Peach in a popup so the staff workflow continues uninterrupted.
-      const w = window.open(
-        result.redirectUrl,
-        "swiftpms-peach-pay",
-        "width=520,height=720,resizable=yes,scrollbars=yes",
-      );
-      popupRef.current = w;
+      // Now safe to navigate the already-open popup.
+      try {
+        w.location.href = result.redirectUrl;
+      } catch {
+        // Cross-origin/closed — fall back to a same-window redirect.
+        window.location.assign(result.redirectUrl);
+      }
 
       setWaiting(true);
 
@@ -114,6 +138,10 @@ export function PeachPayButton({
       let pollTimer: number | null = null;
       let forceSyncCount = 0;
       let done = false;
+      // intentRef avoids the closed-over `intent` state racing — the poll
+      // callback was firing finish(null) before the Firestore listener had
+      // populated state on first tick.
+      const intentRef: { current: PaymentIntent | null } = { current: null };
 
       function finish(updated: PaymentIntent | null, success: boolean) {
         if (done) return;
@@ -145,6 +173,7 @@ export function PeachPayButton({
         propId,
         result.paymentIntentId,
         (updated) => {
+          intentRef.current = updated;
           setIntent(updated);
           if (!updated) return;
           const terminal =
@@ -170,12 +199,18 @@ export function PeachPayButton({
           else forceSyncCount += 1;
           if (done) return;
           if (r.terminal) {
-            // Doc will be flipped by the callable; the Firestore listener
-            // above picks it up and calls finish(). If for some reason the
-            // listener races, fall back to direct finish:
-            if (!intent) {
-              finish(null, r.status === PaymentIntentStatus.SUCCEEDED);
+            // Prefer the Firestore listener's fully-populated intent doc.
+            // If the listener already fired finish(), done=true and we
+            // bail. If it hasn't but the sync flipped the doc, wait a
+            // beat — the listener will get the snapshot momentarily.
+            if (intentRef.current) {
+              // Listener has data — let IT call finish() so we always have
+              // a populated PaymentIntent object for onSuccess.
+              return;
             }
+            // Listener hasn't caught up yet. Give it ~500ms then poll again
+            // (the listener is usually instant, so we rarely get here).
+            pollTimer = window.setTimeout(poll, 500);
             return;
           }
           pollTimer = window.setTimeout(poll, 3000);

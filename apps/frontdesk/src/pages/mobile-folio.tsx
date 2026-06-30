@@ -261,13 +261,27 @@ export function MobileFolioPage() {
         >
           Check in guest
         </button>
-        {folio.balance === 0 && folio.status === "open" && (
+        {folio.status === "open" && (
           <button
-            onClick={handleCheckOut}
+            onClick={async () => {
+              if (folio.balance > 0) {
+                const ok = window.confirm(
+                  `Folio still has an outstanding balance of ${formatCents(folio.balance)}. Check out anyway? The server will reject if balance > 0; record the payment first if you need to.`,
+                );
+                if (!ok) return;
+              }
+              await handleCheckOut();
+            }}
             disabled={busy}
-            className="mt-2 w-full rounded-lg bg-success px-3 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            className={`mt-2 w-full rounded-lg px-3 py-3 text-sm font-semibold disabled:opacity-50 ${
+              folio.balance === 0
+                ? "bg-success text-white"
+                : "border border-amber-300 bg-amber-50 text-amber-900"
+            }`}
           >
-            Check out
+            {folio.balance === 0
+              ? "Check out"
+              : `Check out (R${(folio.balance / 100).toFixed(2)} outstanding)`}
           </button>
         )}
       </div>

@@ -5,7 +5,7 @@ import { addCents, subtractCents } from "@swiftpms/shared";
 import { processPaymentSchema } from "@swiftpms/shared";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
-import { db, folioRef, reservationsRef, roomRef } from "../lib/firestore.js";
+import { db, folioRef, reservationRef, roomRef } from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
 
@@ -20,15 +20,55 @@ export const processPayment = onCall({ cors: true }, async (request) => {
     const data = validateRequest(processPaymentSchema, request.data);
 
     const result = await db.runTransaction(async (tx) => {
+      // Firestore transactions require ALL reads before ANY writes.
+      // 1) Read folio
       const fRef = folioRef(tenantId, propertyId, data.folioId);
       const fSnap = await tx.get(fRef);
       if (!fSnap.exists) throw notFound("Folio not found");
-
       const folio = fSnap.data()!;
       if (folio.status !== "open") {
         throw preconditionFailed("Folio is not open");
       }
 
+      // Idempotency — bail if we've already processed this clientRequestId.
+      if (data.clientRequestId) {
+        const dupe = (folio.payments as Array<{ clientRequestId?: string }>)?.find(
+          (p) => p?.clientRequestId === data.clientRequestId,
+        );
+        if (dupe) {
+          return {
+            balance: folio.balance as number,
+            status: folio.status as string,
+          };
+        }
+      }
+
+      const newTotalPayments = addCents(folio.totalPayments as number, data.amount);
+      const newBalance = subtractCents(folio.totalCharges as number, newTotalPayments);
+      const newStatus = newBalance <= 0 ? "settled" : "open";
+
+      // 2) If we'll be settling, pre-read the linked reservation + its room
+      //    by direct doc lookup (no 500-row scan). Direct lookup also avoids
+      //    the previous bug where past 500 reservations the linked one was
+      //    never found and the room stayed `held`.
+      let resR: FirebaseFirestore.DocumentReference | null = null;
+      let resSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+      let rRef: FirebaseFirestore.DocumentReference | null = null;
+      let rSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+
+      if (newStatus === "settled" && folio.reservationId) {
+        resR = reservationRef(tenantId, propertyId, folio.reservationId as string);
+        resSnap = await tx.get(resR);
+        if (resSnap.exists) {
+          const rid = resSnap.data()!.roomId as string | null;
+          if (rid) {
+            rRef = roomRef(tenantId, propertyId, rid);
+            rSnap = await tx.get(rRef);
+          }
+        }
+      }
+
+      // --- All reads complete. Begin writes. ---
       const payment = {
         id: `pmt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         method: data.method,
@@ -36,11 +76,8 @@ export const processPayment = onCall({ cors: true }, async (request) => {
         reference: data.reference ?? null,
         processedBy: request.auth!.uid,
         processedAt: new Date().toISOString(),
+        clientRequestId: data.clientRequestId ?? null,
       };
-
-      const newTotalPayments = addCents(folio.totalPayments as number, data.amount);
-      const newBalance = subtractCents(folio.totalCharges as number, newTotalPayments);
-      const newStatus = newBalance <= 0 ? "settled" : "open";
 
       tx.update(fRef, {
         payments: FieldValue.arrayUnion(payment),
@@ -50,38 +87,19 @@ export const processPayment = onCall({ cors: true }, async (request) => {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // If folio is now settled, confirm the room reservation
-      if (newStatus === "settled") {
-        // Find the reservation linked to this folio
-        const resQuery = await tx.get(
-          reservationsRef(tenantId, propertyId)
-            .where("__name__", ">=", "")
-            .limit(500),
-        );
-        const linkedRes = resQuery.docs.find(
-          (d) => d.id === (folio.reservationId as string),
-        );
-        if (linkedRes) {
-          const resData = linkedRes.data();
-          const rid = resData.roomId as string | null;
-          if (rid) {
-            const rRef = roomRef(tenantId, propertyId, rid);
-            const rSnap = await tx.get(rRef);
-            if (rSnap.exists && rSnap.data()?.status === "held") {
-              tx.update(rRef, {
-                status: "reserved",
-                holdExpiresAt: null,
-                currentReservationId: linkedRes.id,
-                updatedAt: FieldValue.serverTimestamp(),
-              });
-            }
-          }
-          // Clear hold expiry on reservation
-          tx.update(linkedRes.ref, {
+      if (newStatus === "settled" && resR && resSnap?.exists) {
+        if (rRef && rSnap?.exists && rSnap.data()?.status === "held") {
+          tx.update(rRef, {
+            status: "reserved",
             holdExpiresAt: null,
+            currentReservationId: folio.reservationId,
             updatedAt: FieldValue.serverTimestamp(),
           });
         }
+        tx.update(resR, {
+          holdExpiresAt: null,
+          updatedAt: FieldValue.serverTimestamp(),
+        });
       }
 
       return { balance: Math.max(0, newBalance), status: newStatus };

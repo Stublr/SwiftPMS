@@ -30,6 +30,16 @@ export const addCharge = onCall({ cors: true }, async (request) => {
         throw preconditionFailed("Folio is not open");
       }
 
+      // Idempotency check — if the caller passed a clientRequestId and a
+      // charge with that token already exists, treat this as a no-op retry
+      // and return success without applying again.
+      if (data.clientRequestId) {
+        const existing = (folio.charges as Array<{ clientRequestId?: string }>)?.find(
+          (c) => c?.clientRequestId === data.clientRequestId,
+        );
+        if (existing) return;
+      }
+
       const charge = {
         id: `chg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         category: data.category,
@@ -40,6 +50,7 @@ export const addCharge = onCall({ cors: true }, async (request) => {
         date: new Date().toISOString().split("T")[0],
         addedBy: request.auth!.uid,
         addedAt: new Date().toISOString(),
+        clientRequestId: data.clientRequestId ?? null,
       };
 
       const newTotalCharges = addCents(folio.totalCharges as number, chargeTotal);

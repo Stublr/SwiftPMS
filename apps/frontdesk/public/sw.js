@@ -2,8 +2,11 @@
 // Strategy: network-first for app shell so deploys take effect immediately,
 // cache-first for hashed asset URLs (everything under /assets/), and let
 // API calls (firestore, cloud functions) pass through to network always.
-
-const CACHE_NAME = "swiftpms-staff-v1";
+//
+// CACHE_NAME bumped on every meaningful change so old caches get purged
+// in the activate step + clients reload via the controllerchange listener
+// in main.tsx.
+const CACHE_NAME = "swiftpms-staff-v2";
 const APP_SHELL = ["/", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {

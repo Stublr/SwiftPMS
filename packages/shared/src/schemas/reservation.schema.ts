@@ -12,6 +12,13 @@ export const createReservationSchema = z
     adults: z.number().int().min(1, "At least 1 adult"),
     children: z.number().int().min(0).default(0),
     specialRequests: z.string().max(1000).nullish().transform((v) => v ?? undefined),
+    // Optional client-generated idempotency token to dedupe retries.
+    clientRequestId: z
+      .string()
+      .min(1)
+      .max(128)
+      .nullish()
+      .transform((v) => v ?? undefined),
   })
   .refine(
     (d) => d.checkOutDate > d.checkInDate,

@@ -28,6 +28,27 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
 
     const data = validateRequest(createReservationSchema, request.data);
 
+    // Idempotency — if we've seen this clientRequestId, return the existing
+    // reservation instead of creating a duplicate. Mostly protects against
+    // network-retry double-bookings from flaky mobile clients.
+    if (data.clientRequestId) {
+      const existing = await reservationsRef(tenantId, propertyId)
+        .where("clientRequestId", "==", data.clientRequestId)
+        .limit(1)
+        .get();
+      if (!existing.empty) {
+        const d = existing.docs[0]!;
+        const r = d.data();
+        return {
+          id: d.id,
+          folioId: null,
+          nightCount: r.nightCount as number,
+          roomRate: r.roomRate as number,
+          totalRoomCharges: r.totalRoomCharges as number,
+        };
+      }
+    }
+
     // Check property is active
     const propSnap = await propertyRef(tenantId, propertyId).get();
     if (!propSnap.exists || !(propSnap.data()?.isActive)) {
@@ -135,6 +156,7 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
         specialRequests: data.specialRequests ?? null,
         source: "guest_portal",
         createdBy: `guest:${request.auth!.uid}`,
+        clientRequestId: data.clientRequestId ?? null,
         checkedInAt: null,
         checkedInBy: null,
         checkedOutAt: null,
