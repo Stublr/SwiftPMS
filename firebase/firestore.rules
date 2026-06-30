@@ -74,11 +74,10 @@ service cloud.firestore {
         allow delete: if belongsToTenant(tenantId) && isManager();
       }
 
-      // Room Types — public read of ACTIVE types (guest portal browses
-      // before login). Tenant members read all. Manager+ writes.
+      // Room Types — publicly readable (booking inventory is non-sensitive
+      // and the guest portal must list it before login). Manager+ writes.
       match /roomTypes/{roomTypeId} {
-        allow read: if (resource == null || resource.data.isActive == true)
-                    || belongsToTenant(tenantId);
+        allow read: if true;
         allow write: if belongsToTenant(tenantId) && isManager();
       }
 
@@ -88,11 +87,10 @@ service cloud.firestore {
         allow write: if false;
       }
 
-      // Properties — public read of ACTIVE properties (guest portal browses
-      // before login). Tenant members read all. Admin writes.
+      // Properties — publicly readable (the guest portal must list lodges
+      // before login). Address + amenities are non-sensitive. Admin writes.
       match /properties/{propertyId} {
-        allow read: if (resource == null || resource.data.isActive == true)
-                    || belongsToTenant(tenantId);
+        allow read: if true;
         allow write: if belongsToTenant(tenantId) && isAdmin();
 
         // Rooms — public read (capacity / status not sensitive; the guest

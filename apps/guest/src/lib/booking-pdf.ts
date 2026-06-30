@@ -1,3 +1,5 @@
+import QRCode from "qrcode";
+
 import { formatCents } from "@swiftpms/shared";
 import type { Reservation } from "@swiftpms/shared";
 
@@ -14,6 +16,29 @@ interface BookingPdfData {
   amenities?: string[];
   checkInTime?: string;
   checkOutTime?: string;
+  /** Front desk base URL the QR code resolves to (e.g. https://swiftpms-prod.web.app). */
+  frontdeskUrl?: string;
+  tenantId?: string;
+}
+
+/**
+ * Build the check-in URL the QR encodes. Staff scans the QR on the guest's
+ * phone / printed PDF; their device opens this URL in the front desk app
+ * which loads the reservation and offers a Check In button.
+ */
+function buildCheckInUrl(
+  frontdeskUrl: string,
+  tenantId: string,
+  propertyId: string,
+  reservationId: string,
+): string {
+  const base = frontdeskUrl.replace(/\/$/, "");
+  const qs = new URLSearchParams({
+    res: reservationId,
+    p: propertyId,
+    t: tenantId,
+  });
+  return `${base}/check-in?${qs.toString()}`;
 }
 
 function nightCount(ci: string, co: string): number {
@@ -34,73 +59,31 @@ function statusLabel(s: string): string {
   return { confirmed: "Confirmed", checked_in: "Checked In", checked_out: "Checked Out", cancelled: "Cancelled", no_show: "No Show" }[s] ?? s;
 }
 
-/**
- * Generate a simple QR code as an SVG string.
- * Uses a basic encoding — will be replaced with real QR payload later.
- * For now renders a deterministic pattern based on the input text.
- */
-function generateMockQrSvg(text: string, size: number = 80): string {
-  // Simple hash-based pattern to simulate a QR code
-  let hash = 0;
-  for (let i = 0; i < text.length; i++) {
-    hash = ((hash << 5) - hash + text.charCodeAt(i)) | 0;
-  }
-
-  const modules = 21; // QR version 1 = 21x21
-  const cellSize = size / modules;
-  let rects = "";
-
-  // Finder patterns (top-left, top-right, bottom-left)
-  function finderPattern(ox: number, oy: number) {
-    // Outer border
-    for (let i = 0; i < 7; i++) {
-      rects += `<rect x="${(ox + i) * cellSize}" y="${oy * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
-      rects += `<rect x="${(ox + i) * cellSize}" y="${(oy + 6) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
-      rects += `<rect x="${ox * cellSize}" y="${(oy + i) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
-      rects += `<rect x="${(ox + 6) * cellSize}" y="${(oy + i) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
-    }
-    // Inner square
-    for (let r = 2; r < 5; r++) {
-      for (let c = 2; c < 5; c++) {
-        rects += `<rect x="${(ox + c) * cellSize}" y="${(oy + r) * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
-      }
-    }
-  }
-
-  finderPattern(0, 0);
-  finderPattern(14, 0);
-  finderPattern(0, 14);
-
-  // Fill data area with deterministic pattern based on hash
-  let seed = Math.abs(hash);
-  for (let row = 0; row < modules; row++) {
-    for (let col = 0; col < modules; col++) {
-      // Skip finder pattern areas
-      if ((row < 8 && col < 8) || (row < 8 && col > 12) || (row > 12 && col < 8)) continue;
-      // Timing patterns
-      if (row === 6 || col === 6) {
-        if ((row + col) % 2 === 0) {
-          rects += `<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
-        }
-        continue;
-      }
-      // Pseudo-random data modules
-      seed = ((seed * 1103515245 + 12345) >>> 0) & 0x7fffffff;
-      if (seed % 3 !== 0) {
-        rects += `<rect x="${col * cellSize}" y="${row * cellSize}" width="${cellSize}" height="${cellSize}" fill="#003580"/>`;
-      }
-    }
-  }
-
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" style="display:block;"><rect width="${size}" height="${size}" fill="white"/>${rects}</svg>`;
-}
-
-function buildHtml(data: BookingPdfData): string {
+async function buildHtml(data: BookingPdfData): Promise<string> {
   const {
     reservation: r, guestName, guestEmail, propertyName, propertyAddress,
     propertyPhone, propertyEmail, roomTypeName, roomNumber, amenities,
     checkInTime, checkOutTime,
   } = data;
+
+  // Real, scannable QR. Encodes the check-in URL — staff scans, lands on
+  // the front desk reservation view, taps Check In.
+  const frontdeskUrl =
+    data.frontdeskUrl ?? "https://swiftpms-prod.web.app";
+  const tenantId =
+    data.tenantId ?? (import.meta.env.VITE_TENANT_ID as string | undefined) ?? "demo";
+  const checkInUrl = buildCheckInUrl(
+    frontdeskUrl,
+    tenantId,
+    r.propertyId,
+    r.id,
+  );
+  const qrDataUri = await QRCode.toDataURL(checkInUrl, {
+    errorCorrectionLevel: "Q",
+    margin: 2,
+    width: 320,
+    color: { dark: "#0f172a", light: "#ffffff" },
+  });
 
   const nights = nightCount(r.checkInDate, r.checkOutDate);
   const refId = r.id.slice(0, 8).toUpperCase();
@@ -120,11 +103,11 @@ function buildHtml(data: BookingPdfData): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Booking Confirmation - ${refId}</title>
 <style>
-@page{size:A4;margin:12mm 14mm;}
+@page{size:A4;margin:18mm 18mm;}
 *{margin:0;padding:0;box-sizing:border-box;}
-body{font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#333;}
-.p{max-width:770px;margin:0 auto;}
-.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;border-bottom:3px solid #003580;margin-bottom:12px;}
+body{font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#333;background:#fff;padding:24px;}
+.p{max-width:680px;margin:0 auto;padding:0;}
+.hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;border-bottom:3px solid #003580;margin-bottom:14px;gap:16px;}
 .brand{font-size:18px;font-weight:800;color:#003580;}
 .cb{text-align:right;}
 .cb .cl{font-size:13px;font-weight:700;color:#333;}
@@ -165,11 +148,14 @@ body{font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,
 .ib.sp{background:#f3f4f6;border:1px solid #d1d5db;}
 .ib.sp h4{font-size:10px;font-weight:700;color:#374151;margin-bottom:3px;}
 .ib.ct{background:#eff6ff;border:1px solid #bfdbfe;}
-.qr-wrap{float:right;margin:0 0 8px 12px;text-align:center;}
-.qr-wrap svg{border:1px solid #e0e0e0;border-radius:4px;padding:4px;}
-.qr-label{font-size:7px;color:#888;margin-top:2px;text-transform:uppercase;letter-spacing:.5px;}
-.ft{margin-top:10px;padding-top:8px;border-top:1px solid #ddd;font-size:9px;color:#888;text-align:center;clear:both;}
-@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;}.p{max-width:none;}}
+.qr-box{margin-top:16px;padding:14px;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc;display:flex;align-items:center;gap:18px;page-break-inside:avoid;}
+.qr-box img{display:block;width:140px;height:140px;flex:0 0 140px;background:#fff;border-radius:4px;}
+.qr-box .qr-text h4{font-size:13px;font-weight:800;color:#0f172a;margin:0 0 4px 0;letter-spacing:-0.2px;}
+.qr-box .qr-text p{font-size:10px;line-height:1.5;color:#475569;margin:0 0 8px 0;}
+.qr-box .qr-ref{display:inline-block;font-family:ui-monospace,'SF Mono',Menlo,Consolas,monospace;font-size:10px;font-weight:600;color:#0f172a;background:#e2e8f0;padding:2px 8px;border-radius:3px;letter-spacing:0.5px;}
+.ft{margin-top:14px;padding-top:8px;border-top:1px solid #ddd;font-size:9px;color:#888;text-align:center;clear:both;}
+@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact;padding:0;}.p{max-width:none;}}
+@media screen and (max-width:720px){body{padding:12px;}.qr-box{flex-direction:column;text-align:center;}}
 </style></head><body><div class="p">
 <div class="hdr"><div><div class="brand">${propertyName ?? "SwiftPMS"}</div></div>
 <div class="cb"><div class="cl">Booking confirmation</div><div class="cn">CONFIRMATION NUMBER: ${refId}</div>
@@ -193,10 +179,19 @@ body{font:11px/1.4 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,
 <div style="font-size:9px;color:#888;margin-top:2px;">Rate per night: ${rate}</div>
 </div>
 
-<div class="rs"><div class="qr-wrap">${generateMockQrSvg(`SWIFTPMS:${refId}`, 72)}<div class="qr-label">Scan at check-in</div></div>
+<div class="rs">
 <h3>${roomTypeName ?? "Room"}${roomNumber ? ` \u2014 ${roomNumber}` : ""}</h3>
 <div class="rm"><b>Guest name:</b> ${guestName}<br><b>Email:</b> ${guestEmail}<br><b>Number of guests:</b> ${guests}</div>
 ${amenityStr ? `<div class="al">${amenityStr}</div>` : ""}
+</div>
+
+<div class="qr-box">
+<img src="${qrDataUri}" alt="Booking QR code"/>
+<div class="qr-text">
+<h4>Present this code on arrival</h4>
+<p>Staff at ${propertyName ?? "the property"} will scan this QR to check you in. The code stays valid for the full duration of your stay (${nights} night${nights !== 1 ? "s" : ""}, ${ci.day} ${ci.month} \u2192 ${co.day} ${co.month}).</p>
+<span class="qr-ref">REF #${refId}</span>
+</div>
 </div>
 
 ${r.specialRequests ? `<div class="ib sp"><h4>Special Requests</h4><p>${r.specialRequests}</p></div>` : ""}
@@ -210,10 +205,16 @@ ${propertyPhone || propertyEmail ? `<div class="ib ct"><b>Need help?</b> ${prope
 </div></body></html>`;
 }
 
-export function downloadBookingPdf(data: BookingPdfData): void {
-  const html = buildHtml(data);
+export async function downloadBookingPdf(data: BookingPdfData): Promise<void> {
+  // Open the window synchronously while we still have the user-gesture token,
+  // THEN do the async QR work. Otherwise modern browsers block the popup.
   const w = window.open("", "_blank");
   if (!w) { alert("Please allow popups to download the booking confirmation."); return; }
+  w.document.write(
+    `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;">Generating your confirmation…</body></html>`,
+  );
+  const html = await buildHtml(data);
+  w.document.open();
   w.document.write(html);
   w.document.close();
   let printed = false;

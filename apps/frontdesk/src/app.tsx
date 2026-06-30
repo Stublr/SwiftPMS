@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Header } from "@/components/layout/header";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -7,6 +7,7 @@ import { queryClient } from "@/lib/query-client";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminRoomsPage } from "@/pages/admin/rooms";
 import { UsersPage } from "@/pages/admin/users";
+import { CheckInPage } from "@/pages/check-in";
 import { DashboardPage } from "@/pages/dashboard";
 import { GuestsPage } from "@/pages/guests";
 import { LoginPage } from "@/pages/login";
@@ -36,6 +37,8 @@ function PageRouter() {
       return <AdminRoomsPage />;
     case "/admin/users":
       return <UsersPage />;
+    case "/check-in":
+      return <CheckInPage />;
     default:
       return <DashboardPage />;
   }
@@ -71,7 +74,19 @@ function AuthenticatedLayout() {
 
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const navigate = useUIStore((s) => s.navigate);
   const [, setForceRender] = useState(0);
+
+  // Deep-link from a scanned QR: URL is /check-in?res=...&p=...&t=...
+  // Route into the in-app check-in view immediately, regardless of login state.
+  // If not logged in, the LoginPage renders below and after login the URL
+  // params are still there so the CheckInPage picks them up.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.pathname === "/check-in") {
+      navigate("/check-in");
+    }
+  }, [navigate]);
 
   function handleLoginSuccess() {
     setForceRender((n) => n + 1);
