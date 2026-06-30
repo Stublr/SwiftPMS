@@ -29,10 +29,15 @@ import {
   initiateCheckoutAtPeach,
 } from "./peachClient.js";
 
-const PROJECT_ID = process.env.GCLOUD_PROJECT ?? "swiftpms-prod";
+// Peach allows only ONE notification URL per account. The Plankton estate
+// already uses savePeachNotification on plankton-backstage, so all Peach
+// callbacks land there. SwiftPMS reads/forwards from that via the bridge
+// (see docs/peach-bridge.md).
+const PEACH_NOTIFICATION_URL =
+  "https://us-central1-plankton-backstage.cloudfunctions.net/savePeachNotification";
 
 function webhookUrl(): string {
-  return `https://us-central1-${PROJECT_ID}.cloudfunctions.net/peachWebhook`;
+  return PEACH_NOTIFICATION_URL;
 }
 
 function genId(prefix: string): string {

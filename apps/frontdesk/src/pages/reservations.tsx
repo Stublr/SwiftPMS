@@ -21,6 +21,7 @@ import {
 import { getAllGuests, createGuest } from "@/services/guests";
 import { getRoomTypes, getRooms } from "@/services/rooms";
 import { getFolioByReservation, addCharge, processPayment } from "@/services/billing";
+import { PeachPayButton } from "@/components/peach-pay-button";
 
 type Tab = "all" | "confirmed" | "checked_in" | "checked_out";
 
@@ -454,6 +455,49 @@ function FolioPanel({
                   }}
                   onCancel={() => setShowPayment(false)}
                 />
+              )}
+
+              {/* Peach Payments — settle outstanding balance by card */}
+              {folio.status === "open" && folio.balance > 0 && (
+                <div className="mt-6 rounded-md border border-primary/30 bg-primary/5 p-4">
+                  <h4 className="text-sm font-semibold">Take card payment</h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Opens Peach hosted checkout in a new window. This view
+                    updates automatically when the payment completes.
+                  </p>
+                  <div className="mt-3">
+                    <PeachPayButton
+                      label="Pay with Card"
+                      amountCents={folio.balance}
+                      purpose="folio_settlement"
+                      paymentType="DB"
+                      reservationId={reservation.id}
+                      folioId={folio.id}
+                      onSuccess={() => loadFolio()}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Card-on-arrival pre-auth (optional, before checkout) */}
+              {folio.status === "open" && reservation.status === "checked_in" && (
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-4">
+                  <h4 className="text-sm font-semibold">Pre-authorise card</h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Holds the room total on the guest's card without charging.
+                    Capture at check-out (manual capture flow coming soon).
+                  </p>
+                  <div className="mt-3">
+                    <PeachPayButton
+                      label="Pre-auth card"
+                      amountCents={folio.totalCharges}
+                      purpose="card_on_arrival_preauth"
+                      paymentType="PA"
+                      reservationId={reservation.id}
+                      folioId={folio.id}
+                    />
+                  </div>
+                </div>
               )}
             </>
           )}

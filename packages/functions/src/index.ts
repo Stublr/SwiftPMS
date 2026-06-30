@@ -13,7 +13,10 @@ export { checkOut } from "./reservations/checkOut.js";
 export { addCharge } from "./billing/addCharge.js";
 export { processPayment } from "./billing/processPayment.js";
 export { initiatePeachCheckout } from "./billing/initiatePeachCheckout.js";
-export { peachWebhook } from "./billing/peachWebhook.js";
+// peachWebhook intentionally NOT exported. Peach allows only one notification
+// URL per account and the Plankton estate's `savePeachNotification` on
+// plankton-backstage owns it. Result-to-folio bridging is a cross-project
+// listener (see docs/peach-bridge.md) — not a webhook on this project.
 
 // Room functions
 export { updateRoomStatus } from "./rooms/updateRoomStatus.js";
