@@ -53,9 +53,10 @@ service cloud.firestore {
         allow delete: if belongsToTenant(tenantId) && isManager();
       }
 
-      // Room Types — admin/manager can manage, everyone can read
+      // Room Types — admin/manager can manage. Active room types are
+      // publicly readable so the guest portal can browse before signup.
       match /roomTypes/{roomTypeId} {
-        allow read: if belongsToTenant(tenantId);
+        allow read: if (resource == null || resource.data.isActive == true) || belongsToTenant(tenantId);
         allow write: if belongsToTenant(tenantId) && isManager();
       }
 
@@ -65,14 +66,17 @@ service cloud.firestore {
         allow write: if false;
       }
 
-      // Properties
+      // Properties — active properties are publicly readable so the
+      // guest portal can browse before signup. Tenant members can read all
+      // (including inactive). Writes are admin-only.
       match /properties/{propertyId} {
-        allow read: if belongsToTenant(tenantId);
+        allow read: if (resource == null || resource.data.isActive == true) || belongsToTenant(tenantId);
         allow write: if belongsToTenant(tenantId) && isAdmin();
 
-        // Rooms — staff with property access can manage, admins can manage all
+        // Rooms — publicly readable (capacity / images / status are not sensitive).
+        // Tenant staff manage writes per role.
         match /rooms/{roomId} {
-          allow read: if belongsToTenant(tenantId);
+          allow read: if true;
           allow create, update: if belongsToTenant(tenantId) && (isAdmin() || (isStaff() && hasPropertyAccess(propertyId)));
           allow delete: if belongsToTenant(tenantId) && isManager();
         }
