@@ -94,6 +94,12 @@ service cloud.firestore {
           allow read: if belongsToTenant(tenantId);
           allow write: if false;
         }
+
+        // Payment intents — Cloud Functions write, tenant members can read
+        match /paymentIntents/{paymentIntentId} {
+          allow read: if belongsToTenant(tenantId);
+          allow write: if false;
+        }
       }
     }
   }

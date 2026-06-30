@@ -91,6 +91,24 @@ export function dailyAggregatesRef(tenantId: string, propertyId: string) {
   return db.collection(`tenants/${tenantId}/properties/${propertyId}/dailyAggregates`);
 }
 
+// --- Payment Intents (under property) ---
+
+export function paymentIntentsRef(tenantId: string, propertyId: string) {
+  return db.collection(
+    `tenants/${tenantId}/properties/${propertyId}/paymentIntents`,
+  );
+}
+
+export function paymentIntentRef(
+  tenantId: string,
+  propertyId: string,
+  paymentIntentId: string,
+) {
+  return db.doc(
+    `tenants/${tenantId}/properties/${propertyId}/paymentIntents/${paymentIntentId}`,
+  );
+}
+
 // --- Audit Log ---
 
 export function auditLogRef(tenantId: string) {

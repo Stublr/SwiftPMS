@@ -2,9 +2,15 @@ import { create } from "zustand";
 
 interface BookingResult {
   reservationId: string;
+  folioId: string | null;
   nightCount: number;
   roomRate: number;
   totalRoomCharges: number;
+}
+
+interface PendingPayment {
+  paymentIntentId: string;
+  amountCents: number;
 }
 
 interface BookingState {
@@ -15,11 +21,13 @@ interface BookingState {
   selectedPropertyId: string | null;
   selectedRoomTypeId: string | null;
   result: BookingResult | null;
+  pendingPayment: PendingPayment | null;
   setDates: (checkIn: string, checkOut: string) => void;
   setGuests: (adults: number, children: number) => void;
   setProperty: (id: string) => void;
   setRoomType: (id: string) => void;
   setResult: (result: BookingResult) => void;
+  setPendingPayment: (p: PendingPayment | null) => void;
   reset: () => void;
 }
 
@@ -31,11 +39,13 @@ export const useBookingStore = create<BookingState>()((set) => ({
   selectedPropertyId: null,
   selectedRoomTypeId: null,
   result: null,
+  pendingPayment: null,
   setDates: (checkInDate, checkOutDate) => set({ checkInDate, checkOutDate }),
   setGuests: (adults, children) => set({ adults, children }),
   setProperty: (selectedPropertyId) => set({ selectedPropertyId }),
   setRoomType: (selectedRoomTypeId) => set({ selectedRoomTypeId }),
   setResult: (result) => set({ result }),
+  setPendingPayment: (pendingPayment) => set({ pendingPayment }),
   reset: () =>
     set({
       checkInDate: null,
@@ -45,5 +55,6 @@ export const useBookingStore = create<BookingState>()((set) => ({
       selectedPropertyId: null,
       selectedRoomTypeId: null,
       result: null,
+      pendingPayment: null,
     }),
 }));

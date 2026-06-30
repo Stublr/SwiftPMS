@@ -9,6 +9,7 @@ import { BookingPage } from "@/pages/booking";
 import { ConfirmationPage } from "@/pages/confirmation";
 import { MyBookingsPage } from "@/pages/my-bookings";
 import { LoginPage } from "@/pages/login";
+import { PaymentResultPage } from "@/pages/payment-result";
 
 function PageRouter() {
   const currentPage = useUIStore((s) => s.currentPage);
@@ -24,6 +25,8 @@ function PageRouter() {
       return <MyBookingsPage />;
     case "/login":
       return <LoginPage />;
+    case "/payment-result":
+      return <PaymentResultPage />;
     default:
       return <HomePage />;
   }
@@ -31,6 +34,19 @@ function PageRouter() {
 
 export function App() {
   const isLoading = useGuestAuthStore((s) => s.isLoading);
+  const navigate = useUIStore((s) => s.navigate);
+
+  // Peach hosted-checkout return: when the browser lands on
+  // /?payment_return=1, route into the in-app payment-result view and strip
+  // the query string so a refresh doesn't loop.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment_return") === "1") {
+      navigate("/payment-result");
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, [navigate]);
 
   useEffect(() => {
     const unsub = initGuestAuthListener();

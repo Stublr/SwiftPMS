@@ -9,3 +9,4 @@ export * from "./folio.js";
 export * from "./report.js";
 export * from "./common.js";
 export * from "./firestore.js";
+export * from "./payment.js";

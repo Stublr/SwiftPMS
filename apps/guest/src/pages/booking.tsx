@@ -5,6 +5,8 @@ import { useBookingStore } from "@/stores/booking.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { checkAvailability, type AvailableRoomType } from "@/services/availability";
 import { createBooking } from "@/services/booking";
+import { initiatePeachCheckout } from "@/services/payment";
+import { writePendingToStorage } from "@/pages/payment-result";
 import { guestLogin, guestRegister } from "@/services/auth";
 import { formatCents, multiplyCents } from "@swiftpms/shared";
 
@@ -111,6 +113,7 @@ export function BookingPage() {
   }
 
   const setResult = useBookingStore((s) => s.setResult);
+  const setPendingPayment = useBookingStore((s) => s.setPendingPayment);
 
   async function handleConfirmBooking() {
     if (!guestId || !selectedRoomTypeId || !checkInDate || !checkOutDate) return;
@@ -129,18 +132,48 @@ export function BookingPage() {
       });
       setResult({
         reservationId: bookingResult.id,
+        folioId: bookingResult.folioId,
         nightCount: bookingResult.nightCount,
         roomRate: bookingResult.roomRate,
         totalRoomCharges: bookingResult.totalRoomCharges,
       });
-      navigate("/confirmation");
+
+      // Kick off Peach hosted checkout. On return, the guest lands on
+      // /?payment_return=1 which the app router maps to the payment-result page.
+      const shopperResultUrl = `${window.location.origin}/?payment_return=1`;
+      const { paymentIntentId, redirectUrl } = await initiatePeachCheckout({
+        purpose: "guest_booking",
+        amount: bookingResult.totalRoomCharges,
+        propertyId: selectedPropertyId!,
+        reservationId: bookingResult.id,
+        folioId: bookingResult.folioId,
+        paymentType: "DB",
+        shopperResultUrl,
+      });
+
+      // Persist so the return page can find this intent after the redirect.
+      const tid = useGuestAuthStore.getState().tenantId ?? "";
+      writePendingToStorage({
+        paymentIntentId,
+        tenantId: tid,
+        propertyId: selectedPropertyId!,
+      });
+      setPendingPayment({
+        paymentIntentId,
+        amountCents: bookingResult.totalRoomCharges,
+      });
+
+      // Send the user to Peach. They come back to shopperResultUrl.
+      window.location.assign(redirectUrl);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Failed to create booking.",
       );
-    } finally {
       setSubmitting(false);
     }
+    // Note: don't reset `submitting` in the success path — the browser is
+    // navigating away to Peach, and leaving the button disabled prevents
+    // a double-click before the redirect kicks in.
   }
 
   if (loading) {

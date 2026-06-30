@@ -12,6 +12,8 @@ export { checkOut } from "./reservations/checkOut.js";
 // Billing functions
 export { addCharge } from "./billing/addCharge.js";
 export { processPayment } from "./billing/processPayment.js";
+export { initiatePeachCheckout } from "./billing/initiatePeachCheckout.js";
+export { peachWebhook } from "./billing/peachWebhook.js";
 
 // Room functions
 export { updateRoomStatus } from "./rooms/updateRoomStatus.js";
