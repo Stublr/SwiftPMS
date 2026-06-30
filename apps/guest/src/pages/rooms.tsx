@@ -304,12 +304,33 @@ function RoomTypeCard({
 
           <div className="mt-4 flex items-end justify-between border-t border-border pt-4">
             <div>
-              <span className="text-2xl font-bold text-foreground">{formatCents(room.baseRate)}</span>
-              <span className="text-sm text-muted-foreground"> / night</span>
-              {nights > 1 && (
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatCents(room.baseRate * nights)} total for {nights} nights
-                </p>
+              {room.tieredPricing ? (
+                <>
+                  <span className="text-2xl font-bold text-foreground">
+                    {formatCents(room.tieredPricing.standard.baseRate)}
+                  </span>
+                  <span className="text-sm text-muted-foreground">
+                    {" "}per person / night
+                  </span>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Children under {room.tieredPricing.childAgeMax + 1}:{" "}
+                    {formatCents(room.tieredPricing.standard.extraChild)}/night •
+                    High season rates apply on peak dates
+                  </p>
+                </>
+              ) : (
+                <>
+                  <span className="text-2xl font-bold text-foreground">
+                    {formatCents(room.baseRate)}
+                  </span>
+                  <span className="text-sm text-muted-foreground"> / night</span>
+                  {nights > 1 && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {formatCents(room.baseRate * nights)} total for {nights}{" "}
+                      nights
+                    </p>
+                  )}
+                </>
               )}
             </div>
             <button

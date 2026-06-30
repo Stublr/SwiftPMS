@@ -8,7 +8,11 @@ import { createBooking } from "@/services/booking";
 import { initiatePeachCheckout } from "@/services/payment";
 import { writePendingToStorage } from "@/pages/payment-result";
 import { guestLogin, guestRegister } from "@/services/auth";
-import { formatCents, multiplyCents } from "@swiftpms/shared";
+import {
+  calculateTieredStayTotal,
+  formatCents,
+  multiplyCents,
+} from "@swiftpms/shared";
 
 type AuthTab = "login" | "register";
 
@@ -185,7 +189,23 @@ export function BookingPage() {
   }
 
   const nights = nightCount();
-  const totalCents = roomType ? multiplyCents(roomType.baseRate, nights) : 0;
+  // Tiered (per-person) pricing if the room type has it; else flat baseRate.
+  const tieredCalc =
+    roomType?.tieredPricing && checkInDate && checkOutDate
+      ? calculateTieredStayTotal(
+          roomType.tieredPricing,
+          checkInDate,
+          checkOutDate,
+          adults,
+          children,
+        )
+      : null;
+  const totalCents = tieredCalc
+    ? tieredCalc.total
+    : roomType
+      ? multiplyCents(roomType.baseRate, nights)
+      : 0;
+  const nightlyDisplay = tieredCalc?.nightlyRate ?? roomType?.baseRate ?? 0;
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8">
@@ -470,15 +490,87 @@ export function BookingPage() {
 
               {roomType && (
                 <>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">
-                      {formatCents(roomType.baseRate)} x {nights}{" "}
-                      {nights === 1 ? "night" : "nights"}
-                    </span>
-                    <span className="font-medium text-foreground">
-                      {formatCents(totalCents)}
-                    </span>
-                  </div>
+                  {tieredCalc && roomType.tieredPricing ? (
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      <div className="flex justify-between">
+                        <span>
+                          {tieredCalc.tier === "high" ? "High" : "Standard"}{" "}
+                          season base ({roomType.tieredPricing[tieredCalc.tier].basePersonCount} person{roomType.tieredPricing[tieredCalc.tier].basePersonCount === 1 ? "" : "s"})
+                        </span>
+                        <span>
+                          {formatCents(
+                            roomType.tieredPricing[tieredCalc.tier].baseRate,
+                          )}
+                          /night
+                        </span>
+                      </div>
+                      {Math.max(
+                        0,
+                        adults -
+                          roomType.tieredPricing[tieredCalc.tier].basePersonCount,
+                      ) > 0 && (
+                        <div className="flex justify-between">
+                          <span>
+                            {adults -
+                              roomType.tieredPricing[tieredCalc.tier]
+                                .basePersonCount}{" "}
+                            extra adult(s) @{" "}
+                            {formatCents(
+                              roomType.tieredPricing[tieredCalc.tier].extraAdult,
+                            )}
+                            /night
+                          </span>
+                          <span>
+                            {formatCents(
+                              (adults -
+                                roomType.tieredPricing[tieredCalc.tier]
+                                  .basePersonCount) *
+                                roomType.tieredPricing[tieredCalc.tier]
+                                  .extraAdult,
+                            )}
+                            /night
+                          </span>
+                        </div>
+                      )}
+                      {children > 0 && (
+                        <div className="flex justify-between">
+                          <span>
+                            {children} child(ren) under{" "}
+                            {roomType.tieredPricing.childAgeMax + 1} @{" "}
+                            {formatCents(
+                              roomType.tieredPricing[tieredCalc.tier].extraChild,
+                            )}
+                            /night
+                          </span>
+                          <span>
+                            {formatCents(
+                              children *
+                                roomType.tieredPricing[tieredCalc.tier]
+                                  .extraChild,
+                            )}
+                            /night
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between pt-1 font-medium text-foreground">
+                        <span>
+                          {formatCents(nightlyDisplay)} × {nights}{" "}
+                          {nights === 1 ? "night" : "nights"}
+                        </span>
+                        <span>{formatCents(totalCents)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">
+                        {formatCents(roomType.baseRate)} x {nights}{" "}
+                        {nights === 1 ? "night" : "nights"}
+                      </span>
+                      <span className="font-medium text-foreground">
+                        {formatCents(totalCents)}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="border-t border-border pt-3">
                     <div className="flex justify-between">

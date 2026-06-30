@@ -595,7 +595,18 @@ function RoomTypesList() {
                   <tr key={rt.id}>
                     <td className="px-4 py-3 font-medium">{rt.name}</td>
                     <td className="px-4 py-3">{rt.code}</td>
-                    <td className="px-4 py-3">{formatCents(rt.baseRate)}/night</td>
+                    <td className="px-4 py-3">
+                      {rt.tieredPricing ? (
+                        <span title={`Standard: R${(rt.tieredPricing.standard.baseRate / 100).toFixed(2)} base + R${(rt.tieredPricing.standard.extraAdult / 100).toFixed(2)}/extra adult + R${(rt.tieredPricing.standard.extraChild / 100).toFixed(2)}/child. High: R${(rt.tieredPricing.high.baseRate / 100).toFixed(2)} base + R${(rt.tieredPricing.high.extraAdult / 100).toFixed(2)}/adult + R${(rt.tieredPricing.high.extraChild / 100).toFixed(2)}/child.`}>
+                          {formatCents(rt.tieredPricing.standard.baseRate)}/person/night
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            (tiered)
+                          </span>
+                        </span>
+                      ) : (
+                        `${formatCents(rt.baseRate)}/night`
+                      )}
+                    </td>
                     <td className="px-4 py-3">{rt.maxOccupancy}</td>
                     <td className="px-4 py-3">{rt.bedConfiguration}</td>
                     <td className="px-4 py-3">

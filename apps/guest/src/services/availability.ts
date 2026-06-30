@@ -1,4 +1,6 @@
 import { httpsCallable } from "firebase/functions";
+import type { TieredPricing } from "@swiftpms/shared";
+
 import { functions } from "@/lib/firebase";
 import { getTenantId } from "@/services/property";
 
@@ -8,6 +10,7 @@ export interface AvailableRoomType {
   code: string;
   description: string | null;
   baseRate: number;
+  tieredPricing: TieredPricing | null;
   maxOccupancy: number;
   bedConfiguration: string;
   amenities: string[];
