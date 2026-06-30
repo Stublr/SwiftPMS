@@ -119,6 +119,8 @@ export const syncPaymentStatus = onCall(
       const isSuccess = newStatus === PaymentIntentStatus.SUCCEEDED;
 
       await db.runTransaction(async (tx) => {
+        // Firestore transactions require ALL reads before ANY writes.
+        // 1) Read the intent (idempotency + amounts + linked IDs)
         const fresh = await tx.get(intentDoc);
         if (!fresh.exists) return;
         const freshIntent = fresh.data()!;
@@ -133,6 +135,39 @@ export const syncPaymentStatus = onCall(
           return;
         }
 
+        const folioId = freshIntent.folioId as string | null;
+        const reservationId = freshIntent.reservationId as string | null;
+        const paymentType = freshIntent.paymentType as string;
+        const amount = freshIntent.amount as number;
+
+        // 2) Pre-fetch folio + reservation + room BEFORE any writes.
+        // Only do these reads when we'll actually need them (success + DB type).
+        let folioSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+        let resSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+        let roomSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+        let fRef: FirebaseFirestore.DocumentReference | null = null;
+        let resR: FirebaseFirestore.DocumentReference | null = null;
+        let rRef: FirebaseFirestore.DocumentReference | null = null;
+
+        if (isSuccess && paymentType === "DB" && folioId) {
+          fRef = folioRef(tenantId, propertyId, folioId);
+          folioSnap = await tx.get(fRef);
+
+          if (reservationId) {
+            resR = reservationRef(tenantId, propertyId, reservationId);
+            resSnap = await tx.get(resR);
+            const rid = resSnap.exists
+              ? (resSnap.data()!.roomId as string | null)
+              : null;
+            if (rid) {
+              rRef = roomRef(tenantId, propertyId, rid);
+              roomSnap = await tx.get(rRef);
+            }
+          }
+        }
+
+        // --- All reads complete. Begin writes. ---
+
         tx.update(intentDoc, {
           status: newStatus,
           planktonStatus: planktonRes.status,
@@ -143,19 +178,11 @@ export const syncPaymentStatus = onCall(
         });
 
         if (!isSuccess) return;
-
-        // Apply to folio if linked + paymentType is DB (debit/charge).
-        const folioId = freshIntent.folioId as string | null;
-        const paymentType = freshIntent.paymentType as string;
-        if (paymentType !== "DB" || !folioId) return;
-
-        const fRef = folioRef(tenantId, propertyId, folioId);
-        const fSnap = await tx.get(fRef);
-        if (!fSnap.exists) return;
-        const folio = fSnap.data()!;
+        if (paymentType !== "DB" || !folioId || !fRef || !folioSnap) return;
+        if (!folioSnap.exists) return;
+        const folio = folioSnap.data()!;
         if (folio.status !== "open") return;
 
-        const amount = freshIntent.amount as number;
         const payment = {
           id: `pmt_${Date.now()}_plankton`,
           method: "card",
@@ -184,30 +211,23 @@ export const syncPaymentStatus = onCall(
         });
 
         // If folio settled and reservation has a held room, promote it.
-        const reservationId = freshIntent.reservationId as string | null;
-        if (newFolioStatus === "settled" && reservationId) {
-          const resR = reservationRef(tenantId, propertyId, reservationId);
-          const resSnap = await tx.get(resR);
-          if (resSnap.exists) {
-            const resData = resSnap.data()!;
-            const rid = resData.roomId as string | null;
-            if (rid) {
-              const rRef = roomRef(tenantId, propertyId, rid);
-              const rSnap = await tx.get(rRef);
-              if (rSnap.exists && rSnap.data()?.status === "held") {
-                tx.update(rRef, {
-                  status: "reserved",
-                  holdExpiresAt: null,
-                  currentReservationId: reservationId,
-                  updatedAt: FieldValue.serverTimestamp(),
-                });
-              }
-            }
-            tx.update(resR, {
+        if (newFolioStatus === "settled" && resR && resSnap?.exists) {
+          if (
+            rRef &&
+            roomSnap?.exists &&
+            roomSnap.data()?.status === "held"
+          ) {
+            tx.update(rRef, {
+              status: "reserved",
               holdExpiresAt: null,
+              currentReservationId: reservationId,
               updatedAt: FieldValue.serverTimestamp(),
             });
           }
+          tx.update(resR, {
+            holdExpiresAt: null,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
         }
       });
 
