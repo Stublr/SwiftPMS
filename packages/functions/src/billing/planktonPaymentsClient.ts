@@ -36,7 +36,10 @@ export interface CreatePaymentInput {
   channel: "online";
   captureMode: "automatic" | "manual";
   orderReference: string;
+  /** Where Plankton redirects the shopper's browser after payment. */
   returnUrl: string;
+  /** Peach → Plankton hook. Must be Plankton's own /checkout/result URL. */
+  shopperResultUrl?: string;
   customer: {
     givenName: string;
     surname: string;

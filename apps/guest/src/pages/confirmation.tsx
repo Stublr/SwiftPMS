@@ -1,10 +1,24 @@
 import { useEffect, useState } from "react";
+import { PaymentIntentStatus } from "@swiftpms/shared";
+
 import { useUIStore } from "@/stores/ui.store";
 import { useBookingStore } from "@/stores/booking.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { getPropertyInfo, getRoomTypeName, type PropertyInfo } from "@/services/property";
+import { syncPaymentStatus } from "@/services/payment";
+import {
+  clearPendingFromStorage,
+  readPendingFromStorage,
+} from "@/pages/payment-result";
 import { downloadBookingPdf } from "@/lib/booking-pdf";
 import type { Reservation } from "@swiftpms/shared";
+
+type PaymentSyncState =
+  | { kind: "not_applicable" }
+  | { kind: "syncing" }
+  | { kind: "succeeded" }
+  | { kind: "failed"; message: string }
+  | { kind: "missing_context" };
 
 export function ConfirmationPage() {
   const navigate = useUIStore((s) => s.navigate);
@@ -16,6 +30,7 @@ export function ConfirmationPage() {
   const selectedRoomTypeId = useBookingStore((s) => s.selectedRoomTypeId);
   const bookingResult = useBookingStore((s) => s.result);
   const resetBooking = useBookingStore((s) => s.reset);
+  const setPendingPayment = useBookingStore((s) => s.setPendingPayment);
   const firstName = useGuestAuthStore((s) => s.firstName);
   const lastName = useGuestAuthStore((s) => s.lastName);
   const email = useGuestAuthStore((s) => s.email);
@@ -23,11 +38,95 @@ export function ConfirmationPage() {
 
   const [propInfo, setPropInfo] = useState<PropertyInfo | null>(null);
   const [rtName, setRtName] = useState<string>("");
+  const [paymentSync, setPaymentSync] = useState<PaymentSyncState>({
+    kind: "not_applicable",
+  });
 
-  // Guard: redirect if no booking data
+  // Payment return handling — if the URL carries ?paymentId=<plankton-id>
+  // (the Plankton platform's returnUrl substitution), poll our syncPaymentStatus
+  // callable until we have a terminal state. The paymentIntentId itself is
+  // stored in localStorage from the booking flow.
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const planktonPaymentId = params.get("paymentId");
+    if (!planktonPaymentId) return;
+
+    const pending = readPendingFromStorage();
+    if (!pending) {
+      // No local context for this payment — shouldn't happen in the happy
+      // path (guest came back on the same device that booked). Show a
+      // generic missing-context banner so the guest knows to contact support.
+      setPaymentSync({ kind: "missing_context" });
+      return;
+    }
+
+    setPaymentSync({ kind: "syncing" });
+    let cancelled = false;
+    let timer: number | null = null;
+    let attempts = 0;
+
+    async function tick() {
+      if (cancelled) return;
+      attempts += 1;
+      try {
+        const res = await syncPaymentStatus({
+          propertyId: pending!.propertyId,
+          paymentIntentId: pending!.paymentIntentId,
+          forceSync: attempts >= 3,
+        });
+        if (cancelled) return;
+        if (res.status === PaymentIntentStatus.SUCCEEDED) {
+          clearPendingFromStorage();
+          setPendingPayment(null);
+          setPaymentSync({ kind: "succeeded" });
+          // Strip the paymentId from the URL for a clean history entry.
+          window.history.replaceState({}, "", "/confirmation");
+          return;
+        }
+        if (
+          res.status === PaymentIntentStatus.FAILED ||
+          res.status === PaymentIntentStatus.CANCELLED ||
+          res.status === PaymentIntentStatus.EXPIRED
+        ) {
+          setPaymentSync({
+            kind: "failed",
+            message: `Payment ${res.status.toLowerCase()}`,
+          });
+          clearPendingFromStorage();
+          setPendingPayment(null);
+          return;
+        }
+        timer = window.setTimeout(tick, 3000);
+      } catch (err) {
+        if (cancelled) return;
+        // Transient — try again in 4 seconds
+        timer = window.setTimeout(tick, 4000);
+        if (attempts > 30) {
+          setPaymentSync({
+            kind: "failed",
+            message:
+              err instanceof Error
+                ? err.message
+                : "Timed out waiting for payment confirmation",
+          });
+        }
+      }
+    }
+    tick();
+
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [setPendingPayment]);
+
+  // Guard: redirect if no booking data AND not in the middle of a payment sync.
+  useEffect(() => {
+    if (paymentSync.kind === "syncing") return;
+    if (paymentSync.kind === "missing_context") return;
     if (!checkInDate || !checkOutDate) navigate("/");
-  }, [checkInDate, checkOutDate, navigate]);
+  }, [checkInDate, checkOutDate, navigate, paymentSync.kind]);
 
   // Load property and room type info for the download
   useEffect(() => {
@@ -101,6 +200,89 @@ export function ConfirmationPage() {
   function handleBackHome() {
     resetBooking();
     navigate("/");
+  }
+
+  // Payment sync state overrides the main confirmation view until we have
+  // a terminal payment result. This is the guest-portal return target
+  // (returnUrl on the Plankton platform).
+  if (paymentSync.kind === "syncing") {
+    return (
+      <div className="mx-auto max-w-md px-6 py-20 text-center">
+        <div className="mx-auto mb-6 h-12 w-12 animate-spin rounded-full border-[3px] border-primary/20 border-t-primary" />
+        <h1 className="mb-3 font-display text-2xl font-semibold text-foreground">
+          Confirming your payment…
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Don't close this window — we're checking with the payment provider.
+        </p>
+      </div>
+    );
+  }
+
+  if (paymentSync.kind === "failed") {
+    return (
+      <div className="mx-auto max-w-md px-6 py-20 text-center">
+        <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
+          <svg
+            className="h-9 w-9 text-red-600"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2.5}
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </div>
+        <h1 className="mb-3 font-display text-2xl font-semibold text-foreground">
+          Payment didn't complete
+        </h1>
+        <p className="mb-6 text-sm text-muted-foreground">
+          {paymentSync.message}. Your booking has been released.
+        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+          <button
+            onClick={() => {
+              resetBooking();
+              navigate("/rooms");
+            }}
+            className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card"
+          >
+            Try again
+          </button>
+          <button
+            onClick={handleBackHome}
+            className="rounded-lg border border-border bg-white px-6 py-2.5 text-sm font-semibold text-foreground shadow-sm transition-colors hover:bg-muted"
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (paymentSync.kind === "missing_context") {
+    return (
+      <div className="mx-auto max-w-md px-6 py-20 text-center">
+        <h1 className="mb-3 font-display text-2xl font-semibold text-foreground">
+          Payment reference not found
+        </h1>
+        <p className="mb-6 text-sm text-muted-foreground">
+          We couldn't find the booking in this browser session. Check your
+          confirmation email or contact support with the payment reference in
+          your URL.
+        </p>
+        <button
+          onClick={handleBackHome}
+          className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card"
+        >
+          Back to Home
+        </button>
+      </div>
+    );
   }
 
   return (

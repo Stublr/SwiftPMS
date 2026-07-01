@@ -31,8 +31,32 @@ import {
   createPlanktonPayment,
 } from "./planktonPaymentsClient.js";
 
+// Plankton platform's checkout-result hook. Peach POSTs here first; the
+// platform validates HMAC, updates the payment record, then redirects the
+// shopper's browser to our `returnUrl`.
+const PLANKTON_SHOPPER_RESULT_URL =
+  "https://plankton-railways.web.app/api/checkout/result";
+
 function genId(prefix: string): string {
   return `${prefix}_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`;
+}
+
+/**
+ * Derive the customer-facing returnUrl from the origin the client provided.
+ * We keep the `{paymentId}` literal — the Plankton platform substitutes it
+ * with the real paymentId when redirecting the shopper.
+ *
+ * Accepts either an origin (`https://x.web.app`) or any full URL; strips
+ * to origin then appends our confirmation path.
+ */
+function buildReturnUrl(originHint: string): string {
+  let origin: string;
+  try {
+    origin = new URL(originHint).origin;
+  } catch {
+    origin = originHint.replace(/\/$/, "");
+  }
+  return `${origin}/confirmation?paymentId={paymentId}`;
 }
 
 /**
@@ -140,7 +164,11 @@ export const initiatePeachCheckout = onCall(
         channel: "online",
         captureMode: paymentType === "PA" ? "manual" : "automatic",
         orderReference: data.reservationId ?? data.folioId ?? intentId,
-        returnUrl: data.shopperResultUrl,
+        // returnUrl = where the shopper's BROWSER lands. Our confirmation
+        // page reads ?paymentId= and syncs status against the platform.
+        returnUrl: buildReturnUrl(data.shopperResultUrl),
+        // shopperResultUrl = Plankton's own hook. Peach POSTs here first.
+        shopperResultUrl: PLANKTON_SHOPPER_RESULT_URL,
         customer: {
           givenName,
           surname,
