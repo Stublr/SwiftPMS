@@ -41,6 +41,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.0.0
         version: 5.90.21(react@19.2.4)
+      '@yudiel/react-qr-scanner':
+        specifier: ^2.6.0
+        version: 2.6.0(@types/emscripten@1.41.5)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1721,6 +1724,9 @@ packages:
   '@types/deep-eql@4.0.2':
     resolution: {integrity: sha512-c9h9dVVMigMPc4bwTvC5dxqtqJZwQPePsWjPlpSOnojbor6pGqdk541lfA7AqFQr5pB1BRdq0juY9db81BwyFw==}
 
+  '@types/emscripten@1.41.5':
+    resolution: {integrity: sha512-cMQm7pxu6BxtHyqJ7mQZ2kXWV5SLmugybFdHCBbJ5eHzOo6VhBckEgAT3//rP5FwPHNPeEiq4SmQ5ucBwsOo4Q==}
+
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
@@ -2003,6 +2009,13 @@ packages:
   '@vitest/utils@3.2.4':
     resolution: {integrity: sha512-fB2V0JFrQSMsCo9HiSq3Ezpdv4iYaXRG1Sx8edX3MwxfyNn83mKiGzOcH+Fkxt4MHxr3y42fQi1oeAInqgX2QA==}
 
+  '@yudiel/react-qr-scanner@2.6.0':
+    resolution: {integrity: sha512-WjNcSt7qquYUz1LVbwKzSnRQI47sNrh4Vh6nNiGKVxnYcP+KgN5q9rcSzXyZ/7GRV9PPrnzoIuE5YdOxB9yAog==}
+    engines: {node: '>=18.0.0'}
+    peerDependencies:
+      react: ^17 || ^18 || ^19
+      react-dom: ^17 || ^18 || ^19
+
   abbrev@4.0.0:
     resolution: {integrity: sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -2190,6 +2203,9 @@ packages:
   balanced-match@4.0.2:
     resolution: {integrity: sha512-x0K50QvKQ97fdEz2kPehIerj+YTeptKF9hyYkKf6egnwmMWAkADiO0QCzSp0R5xN8FTZgYaBfSaue46Ej62nMg==}
     engines: {node: 20 || >=22}
+
+  barcode-detector@3.2.0:
+    resolution: {integrity: sha512-MrT5TT058ptG5YB157pHLfXKVpp0BKEfQBOb8QvzTbatzmLDu85JJ0Gd/sCYwbwdwStJvxsYflrSN6D6E4Ndyw==}
 
   bare-events@2.8.2:
     resolution: {integrity: sha512-riJjyv1/mHLIPX4RwiK+oW9/4c3TEUeORHKefKAKnZ5kyslbN+HXowtbaVEqt4IMUB7OXlfixcs6gsFeo/jhiQ==}
@@ -4693,6 +4709,9 @@ packages:
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
+  sdp@3.2.2:
+    resolution: {integrity: sha512-xZocWwfyp4hkbN4hLWxMjmv2Q8aNa9MhmOZ7L9aCZPT+dZsgRr6wZRrSYE3HTdyk/2pZKPSgqI7ns7Een1xMSA==}
+
   semver-diff@3.1.1:
     resolution: {integrity: sha512-GX0Ix/CJcHyB8c4ykpHGIAvLyOwOobtM/8d+TQkAd81/bEjgPHrfba41Vpesr7jX/t8Uh+R3EX9eAS5be+jQYg==}
     engines: {node: '>=8'}
@@ -4931,6 +4950,10 @@ packages:
     resolution: {integrity: sha512-Bh7QjT8/SuKUIfObSXNHNSK6WHo6J1tHCqJsuaFDP7gP0fkzSfTxI8y85JrppZ0h8l0maIgc2tfuZQ6/t3GtnQ==}
     engines: {node: ^14.18.0 || >=16.0.0}
 
+  tagged-tag@1.0.0:
+    resolution: {integrity: sha512-yEFYrVhod+hdNyx7g5Bnkkb0G6si8HJurOoOEgC8B/O0uXLHlaey/65KRv6cuWBNhBgHKAROVpc7QyYqE5gFng==}
+    engines: {node: '>=20'}
+
   tailwind-merge@3.4.1:
     resolution: {integrity: sha512-2OA0rFqWOkITEAOFWSBSApYkDeH9t2B3XSJuI4YztKBzK3mX0737A2qtxDZ7xkw9Zfh0bWl+r34sF3HXV+Ig7Q==}
 
@@ -5120,6 +5143,10 @@ packages:
   type-fest@0.21.3:
     resolution: {integrity: sha512-t0rzBq87m3fVcduHDUFhKmyyX+9eo6WQjZvf51Ea/M0Q7+T374Jp1aUiyUl0GKxp8M/OETVHSDvmkyPgvX+X2w==}
     engines: {node: '>=10'}
+
+  type-fest@5.7.0:
+    resolution: {integrity: sha512-1URUxUqfHFM1c+zfSPsa3gnkO7Aq21qyH75SIduNYz4SzY964rn1X2vCMQaHSHhktiw+0kPa2iyb6PUpXqB6Vg==}
+    engines: {node: '>=20'}
 
   type-is@1.6.18:
     resolution: {integrity: sha512-TkRKr9sUTxEH8MdfuCSP7VizJyzRNMjj2J2do2Jr3Kym598JVdEksuzPQCnlFPW4ky9Q+iA+ma9BGm06XQBy8g==}
@@ -5336,6 +5363,10 @@ packages:
     resolution: {integrity: sha512-BMhLD/Sw+GbJC21C/UgyaZX41nPt8bUTg+jWyDeg7e7YN4xOM05YPSIXceACnXVtqyEw/LMClUQMtMZ+PGGpqQ==}
     engines: {node: '>=20'}
 
+  webrtc-adapter@9.0.6:
+    resolution: {integrity: sha512-CHbl2ZQbxx164IgWRgzJno4hWtM4tFbRam1QfI3Yxhs3w/DvqluVxVWeXs3oL5/fbGkSNLKo0Ty5MgUWceNhog==}
+    engines: {node: '>=6.0.0', npm: '>=3.10.0'}
+
   websocket-driver@0.7.4:
     resolution: {integrity: sha512-b17KeDIQVjvb0ssuSDF2cYXSg2iztliJ4B9WdsuB6J952qCPKmnVq4DyW5motImXHDC1cBT/1UezrJVsKw5zjg==}
     engines: {node: '>=0.8.0'}
@@ -5515,6 +5546,11 @@ packages:
         optional: true
       use-sync-external-store:
         optional: true
+
+  zxing-wasm@3.1.0:
+    resolution: {integrity: sha512-5+3V1wPRx4gvbeLH2jB7n2cKrYJ1q4i3QgjnBUtrDPeqxJSi6BdzKJg4y6aF6bgW8zfntnYJyrkqFMevDhL2NA==}
+    peerDependencies:
+      '@types/emscripten': '>=1.39.6'
 
 snapshots:
 
@@ -7052,6 +7088,8 @@ snapshots:
 
   '@types/deep-eql@4.0.2': {}
 
+  '@types/emscripten@1.41.5': {}
+
   '@types/estree@1.0.8': {}
 
   '@types/express-serve-static-core@4.19.8':
@@ -7359,6 +7397,15 @@ snapshots:
       loupe: 3.2.1
       tinyrainbow: 2.0.0
 
+  '@yudiel/react-qr-scanner@2.6.0(@types/emscripten@1.41.5)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+    dependencies:
+      barcode-detector: 3.2.0(@types/emscripten@1.41.5)
+      react: 19.2.4
+      react-dom: 19.2.4(react@19.2.4)
+      webrtc-adapter: 9.0.6
+    transitivePeerDependencies:
+      - '@types/emscripten'
+
   abbrev@4.0.0:
     optional: true
 
@@ -7564,6 +7611,12 @@ snapshots:
   balanced-match@4.0.2:
     dependencies:
       jackspeak: 4.2.3
+
+  barcode-detector@3.2.0(@types/emscripten@1.41.5):
+    dependencies:
+      zxing-wasm: 3.1.0(@types/emscripten@1.41.5)
+    transitivePeerDependencies:
+      - '@types/emscripten'
 
   bare-events@2.8.2: {}
 
@@ -10568,6 +10621,8 @@ snapshots:
 
   scheduler@0.27.0: {}
 
+  sdp@3.2.2: {}
+
   semver-diff@3.1.1:
     dependencies:
       semver: 6.3.1
@@ -10846,6 +10901,8 @@ snapshots:
     dependencies:
       '@pkgr/core': 0.2.9
 
+  tagged-tag@1.0.0: {}
+
   tailwind-merge@3.4.1: {}
 
   tailwindcss@4.1.18: {}
@@ -11034,6 +11091,10 @@ snapshots:
   type-fest@0.20.2: {}
 
   type-fest@0.21.3: {}
+
+  type-fest@5.7.0:
+    dependencies:
+      tagged-tag: 1.0.0
 
   type-is@1.6.18:
     dependencies:
@@ -11276,6 +11337,10 @@ snapshots:
 
   webidl-conversions@8.0.1: {}
 
+  webrtc-adapter@9.0.6:
+    dependencies:
+      sdp: 3.2.2
+
   websocket-driver@0.7.4:
     dependencies:
       http-parser-js: 0.5.10
@@ -11456,3 +11521,8 @@ snapshots:
       '@types/react': 19.2.14
       react: 19.2.4
       use-sync-external-store: 1.6.0(react@19.2.4)
+
+  zxing-wasm@3.1.0(@types/emscripten@1.41.5):
+    dependencies:
+      '@types/emscripten': 1.41.5
+      type-fest: 5.7.0

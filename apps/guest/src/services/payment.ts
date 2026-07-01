@@ -24,7 +24,10 @@ export interface InitiatePeachCheckoutResult {
 
 export interface SyncPaymentStatusInput {
   propertyId: string;
-  paymentIntentId: string;
+  /** Our internal PaymentIntent doc id. Preferred when we have it (same-browser return). */
+  paymentIntentId?: string;
+  /** Plankton platform's payment id (from ?paymentId=... URL param). Server looks up our intent by field lookup. */
+  planktonPaymentId?: string;
   forceSync?: boolean;
 }
 
@@ -89,4 +92,6 @@ export const TERMINAL_INTENT_STATUSES: PaymentIntentStatus[] = [
   PaymentIntentStatus.FAILED,
   PaymentIntentStatus.CANCELLED,
   PaymentIntentStatus.EXPIRED,
+  PaymentIntentStatus.REFUNDED,
+  PaymentIntentStatus.PARTIALLY_REFUNDED,
 ];

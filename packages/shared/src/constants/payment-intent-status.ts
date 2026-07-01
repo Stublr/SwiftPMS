@@ -5,6 +5,8 @@ export const PaymentIntentStatus = {
   FAILED: "failed",
   CANCELLED: "cancelled",
   EXPIRED: "expired",
+  REFUNDED: "refunded",
+  PARTIALLY_REFUNDED: "partially_refunded",
 } as const;
 
 export type PaymentIntentStatus =

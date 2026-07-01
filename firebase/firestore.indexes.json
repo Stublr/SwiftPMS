@@ -55,6 +55,22 @@
         { "fieldPath": "action", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "paymentIntents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "reservationId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "paymentIntents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "folioId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

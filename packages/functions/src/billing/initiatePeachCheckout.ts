@@ -20,6 +20,7 @@ import {
   folioRef,
   guestRef,
   paymentIntentRef,
+  paymentIntentsRef,
   reservationRef,
 } from "../lib/firestore.js";
 import { validateRequest } from "../lib/validation.js";
@@ -114,9 +115,62 @@ export const initiatePeachCheckout = onCall(
         }
       }
 
-      const intentId = genId("pi");
       const paymentType = data.paymentType ?? "DB";
       const currency = (folioData?.currency as string | undefined) ?? "ZAR";
+
+      // Idempotency-on-retry per Aidan's spec: "reuse the same [idempotencyKey]
+      // value if you retry the same order so we never double-charge." If a
+      // non-terminal intent already exists for this reservation/folio, reuse
+      // its id AND its Plankton payment record (return the same redirectUrl
+      // — Plankton itself is idempotent on this key). Only fresh intents get
+      // a newly-generated id.
+      const orderKey = data.reservationId ?? data.folioId ?? null;
+      let intentId: string;
+      let existingIntent: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+      if (orderKey) {
+        const field = data.reservationId ? "reservationId" : "folioId";
+        const existing = await paymentIntentsRef(tenantId, propertyId)
+          .where(field, "==", orderKey)
+          .where("status", "in", [
+            PaymentIntentStatus.INITIATED,
+            PaymentIntentStatus.REDIRECTED,
+          ])
+          .limit(1)
+          .get();
+        existingIntent = existing.empty ? null : existing.docs[0]!;
+      }
+      if (existingIntent) {
+        intentId = existingIntent.id;
+        // Short-circuit if the existing intent has a live redirectUrl AND
+        // the amount matches — return it as-is so the retry sends the guest
+        // to the SAME Peach checkout page. Avoids a Plankton round-trip and
+        // sidesteps any provider-side rate limits on repeated POST /payments
+        // with the same idempotencyKey. Falls through to a re-issue if the
+        // amount changed (shouldn't happen for guest flow but defensive).
+        const existingData = existingIntent.data();
+        const existingRedirect = existingData.redirectUrl as string | null;
+        const existingAmount = existingData.amount as number | undefined;
+        const existingPlanktonId =
+          existingData.planktonPaymentId as string | undefined;
+        if (
+          existingRedirect &&
+          existingAmount === data.amount &&
+          existingPlanktonId
+        ) {
+          console.log("Reusing existing paymentIntent for retry", {
+            intentId,
+            orderKey,
+          });
+          return {
+            paymentIntentId: intentId,
+            redirectUrl: existingRedirect,
+            merchantTransactionId: intentId,
+            planktonPaymentId: existingPlanktonId,
+          };
+        }
+      } else {
+        intentId = genId("pi");
+      }
 
       // Customer info — best-effort. Plankton's API requires givenName +
       // surname. Pull from the linked Guest doc if present; otherwise use

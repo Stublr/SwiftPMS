@@ -106,16 +106,35 @@ const TERMINAL_FAIL: PlanktonStatus[] = [
   "timed_out",
 ];
 
-export function isTerminalSuccess(s: PlanktonStatus): boolean {
-  return s === "captured" || s === "authorized";
+/**
+ * `captured` = funds settled by the gateway. This is the only Plankton status
+ * we treat as a successful settlement in automatic-capture mode (guest
+ * booking flow).
+ */
+export function isCaptured(s: PlanktonStatus): boolean {
+  return s === "captured";
+}
+
+/**
+ * `authorized` = funds held but NOT captured. Per Aidan's spec:
+ * "Only if we ever use manual capture; otherwise treat as pending."
+ * Callers must decide based on their captureMode whether to settle.
+ */
+export function isAuthorized(s: PlanktonStatus): boolean {
+  return s === "authorized";
+}
+
+export function isRefunded(s: PlanktonStatus): boolean {
+  return s === "refunded" || s === "partially_refunded";
 }
 
 export function isTerminalFailure(s: PlanktonStatus): boolean {
   return TERMINAL_FAIL.includes(s);
 }
 
+/** Any state that ends the polling loop. */
 export function isTerminal(s: PlanktonStatus): boolean {
-  return isTerminalSuccess(s) || isTerminalFailure(s);
+  return isCaptured(s) || isRefunded(s) || isTerminalFailure(s);
 }
 
 function baseUrl(): string {

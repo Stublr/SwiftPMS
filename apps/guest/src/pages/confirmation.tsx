@@ -43,9 +43,12 @@ export function ConfirmationPage() {
   });
 
   // Payment return handling — if the URL carries ?paymentId=<plankton-id>
-  // (the Plankton platform's returnUrl substitution), poll our syncPaymentStatus
-  // callable until we have a terminal state. The paymentIntentId itself is
-  // stored in localStorage from the booking flow.
+  // (the Plankton platform's returnUrl substitution), poll syncPaymentStatus
+  // until terminal. Per Aidan's spec, the URL's paymentId IS the source of
+  // truth — we pass it to the backend which looks up our internal intent
+  // by planktonPaymentId. localStorage is a fallback that supplies the
+  // propertyId (which the callable needs and can't derive from the plankton
+  // id alone) plus our internal intent id if we have it.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
@@ -54,9 +57,8 @@ export function ConfirmationPage() {
 
     const pending = readPendingFromStorage();
     if (!pending) {
-      // No local context for this payment — shouldn't happen in the happy
-      // path (guest came back on the same device that booked). Show a
-      // generic missing-context banner so the guest knows to contact support.
+      // Cross-device return without local context. We can't call
+      // syncPaymentStatus without propertyId. Show a graceful message.
       setPaymentSync({ kind: "missing_context" });
       return;
     }
@@ -72,6 +74,10 @@ export function ConfirmationPage() {
       try {
         const res = await syncPaymentStatus({
           propertyId: pending!.propertyId,
+          // Prefer the URL's paymentId as the primary key (Aidan's spec);
+          // the internal intent id is passed as a hint so same-browser
+          // returns skip the field-lookup query.
+          planktonPaymentId: planktonPaymentId ?? undefined,
           paymentIntentId: pending!.paymentIntentId,
           forceSync: attempts >= 3,
         });
@@ -82,6 +88,21 @@ export function ConfirmationPage() {
           setPaymentSync({ kind: "succeeded" });
           // Strip the paymentId from the URL for a clean history entry.
           window.history.replaceState({}, "", "/confirmation");
+          return;
+        }
+        if (
+          res.status === PaymentIntentStatus.REFUNDED ||
+          res.status === PaymentIntentStatus.PARTIALLY_REFUNDED
+        ) {
+          clearPendingFromStorage();
+          setPendingPayment(null);
+          setPaymentSync({
+            kind: "failed",
+            message:
+              res.status === PaymentIntentStatus.REFUNDED
+                ? "This payment was refunded"
+                : "This payment was partially refunded",
+          });
           return;
         }
         if (
@@ -121,10 +142,20 @@ export function ConfirmationPage() {
     };
   }, [setPendingPayment]);
 
-  // Guard: redirect if no booking data AND not in the middle of a payment sync.
+  // Guard: redirect if no booking data AND this isn't a payment return.
+  // Read the paymentId from window.location synchronously — checking
+  // paymentSync.kind alone loses the race on first mount because the
+  // state-setting useEffect hasn't run yet.
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hasPaymentReturn = new URLSearchParams(window.location.search).get(
+        "paymentId",
+      );
+      if (hasPaymentReturn) return;
+    }
     if (paymentSync.kind === "syncing") return;
     if (paymentSync.kind === "missing_context") return;
+    if (paymentSync.kind === "succeeded") return;
     if (!checkInDate || !checkOutDate) navigate("/");
   }, [checkInDate, checkOutDate, navigate, paymentSync.kind]);
 

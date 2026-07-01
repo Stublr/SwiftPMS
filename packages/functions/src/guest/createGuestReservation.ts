@@ -5,7 +5,6 @@ import {
   calculateNights,
   calculateTieredStayTotal,
   multiplyCents,
-  formatCents,
   createReservationSchema,
   type TieredPricing,
 } from "@swiftpms/shared";
@@ -13,7 +12,6 @@ import {
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
 import { db, reservationsRef, foliosRef, roomTypeRef, roomsRef, guestRef, propertyRef } from "../lib/firestore.js";
 import { validateRequest } from "../lib/validation.js";
-import { sendBookingConfirmation } from "../lib/email.js";
 
 export const createGuestReservation = onCall({ cors: true }, async (request) => {
   try {
@@ -202,41 +200,10 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
       };
     });
 
-    // Send booking confirmation email (non-blocking)
-    try {
-      const guestSnap = await guestRef(tenantId, data.guestId).get();
-      const guest = guestSnap.data();
-      const propData = propSnap.data();
-      const rtSnap = await roomTypeRef(tenantId, data.roomTypeId).get();
-      const rtData = rtSnap.data();
-      const guestEmail = guest?.email as string | undefined;
-
-      if (guestEmail) {
-        await sendBookingConfirmation({
-          to: guestEmail,
-          guestName: `${guest?.firstName ?? ""} ${guest?.lastName ?? ""}`.trim() || "Guest",
-          propertyName: (propData?.name as string) ?? "Our Lodge",
-          propertyEmail: (propData?.email as string) ?? undefined,
-          propertyPhone: (propData?.phone as string) ?? undefined,
-          roomTypeName: (rtData?.name as string) ?? "Room",
-          roomName: null,
-          checkInDate: data.checkInDate,
-          checkOutDate: data.checkOutDate,
-          nightCount: result.nightCount,
-          adults: data.adults,
-          children: data.children ?? 0,
-          totalAmount: formatCents(result.totalRoomCharges),
-          ratePerNight: formatCents(result.roomRate),
-          reservationId: result.id,
-          specialRequests: data.specialRequests,
-          checkInTime: (propData?.checkInTime as string) ?? "14:00",
-          checkOutTime: (propData?.checkOutTime as string) ?? "11:00",
-        });
-      }
-    } catch (emailErr) {
-      console.error("Failed to send booking email:", emailErr);
-    }
-
+    // NOTE: Confirmation email is sent from syncPaymentStatus.ts on
+    // successful settlement, not here. Sending at reservation-create time
+    // would email guests for bookings that then get cancelled if payment
+    // fails to initiate.
     return result;
   } catch (err) {
     if (err instanceof HttpsError) throw err;
