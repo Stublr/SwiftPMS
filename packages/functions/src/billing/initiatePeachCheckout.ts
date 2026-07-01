@@ -26,6 +26,7 @@ import { validateRequest } from "../lib/validation.js";
 import {
   PLANKTON_API_KEY,
   PLANKTON_BASE_URL,
+  PLANKTON_RETURN_URL_TEMPLATE,
   PLANKTON_SANDBOX,
   PLANKTON_TENANT_ID,
   createPlanktonPayment,
@@ -42,21 +43,14 @@ function genId(prefix: string): string {
 }
 
 /**
- * Derive the customer-facing returnUrl from the origin the client provided.
- * We keep the `{paymentId}` literal — the Plankton platform substitutes it
- * with the real paymentId when redirecting the shopper.
- *
- * Accepts either an origin (`https://x.web.app`) or any full URL; strips
- * to origin then appends our confirmation path.
+ * Return URL sent to Peach via Plankton. Read verbatim from the
+ * PLANKTON_RETURN_URL_TEMPLATE env var so we can flip between the
+ * lite.plnktn.io proxy (current, while Peach hasn't allowlisted our
+ * domain) and swiftpms-guest.web.app (target, once allowlisted) without
+ * a code change. The literal `{paymentId}` is substituted by the platform.
  */
-function buildReturnUrl(originHint: string): string {
-  let origin: string;
-  try {
-    origin = new URL(originHint).origin;
-  } catch {
-    origin = originHint.replace(/\/$/, "");
-  }
-  return `${origin}/confirmation?paymentId={paymentId}`;
+function returnUrlTemplate(): string {
+  return PLANKTON_RETURN_URL_TEMPLATE.value();
 }
 
 /**
@@ -164,9 +158,10 @@ export const initiatePeachCheckout = onCall(
         channel: "online",
         captureMode: paymentType === "PA" ? "manual" : "automatic",
         orderReference: data.reservationId ?? data.folioId ?? intentId,
-        // returnUrl = where the shopper's BROWSER lands. Our confirmation
-        // page reads ?paymentId= and syncs status against the platform.
-        returnUrl: buildReturnUrl(data.shopperResultUrl),
+        // returnUrl = where the shopper's BROWSER lands. Configured via
+        // PLANKTON_RETURN_URL_TEMPLATE — currently the lite.plnktn.io
+        // proxy which forwards to our /confirmation?paymentId=X.
+        returnUrl: returnUrlTemplate(),
         // shopperResultUrl = Plankton's own hook. Peach POSTs here first.
         shopperResultUrl: PLANKTON_SHOPPER_RESULT_URL,
         customer: {
