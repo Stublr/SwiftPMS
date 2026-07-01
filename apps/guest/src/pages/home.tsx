@@ -55,13 +55,18 @@ export function HomePage() {
   return (
     <div className="flex flex-col">
       {/* ============================ HERO ============================ */}
-      <section className="relative isolate flex flex-col overflow-hidden sm:min-h-[88vh] sm:justify-center">
-        <img
-          src="/images/lodge/pool-sunset.jpeg"
-          alt="Lodge pool at sunset"
-          className="absolute inset-0 -z-10 h-full w-full scale-105 object-cover"
-        />
-        <div className="hero-scrim absolute inset-0 -z-10" />
+      <section className="relative isolate flex flex-col sm:min-h-[88vh] sm:justify-center">
+        {/* Background wrapper — overflow-hidden lives HERE so the scale-105
+            image is clipped inside the hero, without clipping the search
+            card that's translate-y-1/2'd below the section on desktop. */}
+        <div className="absolute inset-0 -z-10 overflow-hidden">
+          <img
+            src="/images/lodge/pool-sunset.jpeg"
+            alt="Lodge pool at sunset"
+            className="h-full w-full scale-105 object-cover"
+          />
+          <div className="hero-scrim absolute inset-0" />
+        </div>
 
         <div className="mx-auto w-full max-w-6xl px-6 pb-8 pt-20 sm:pb-44 sm:pt-28">
           <div className="max-w-2xl animate-fade-up">
