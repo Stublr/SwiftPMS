@@ -26,7 +26,7 @@ import {
   roomRef,
   roomTypeRef,
 } from "../lib/firestore.js";
-import { sendBookingConfirmation } from "../lib/email.js";
+import { SENDGRID_API_KEY, sendBookingConfirmation } from "../lib/email.js";
 import {
   PLANKTON_API_KEY,
   getPlanktonPayment,
@@ -152,7 +152,7 @@ function verifyGatewayMatchesIntent(
  * SUCCEEDED/FAILED/CANCELLED/EXPIRED/REFUNDED.
  */
 export const syncPaymentStatus = onCall(
-  { cors: true, secrets: [PLANKTON_API_KEY] },
+  { cors: true, secrets: [PLANKTON_API_KEY, SENDGRID_API_KEY] },
   async (request) => {
     try {
       if (!request.auth) throw unauthorized();
