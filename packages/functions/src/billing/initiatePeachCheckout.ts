@@ -179,8 +179,25 @@ export const initiatePeachCheckout = onCall(
 
       const redirectUrl = planktonRes.requiresAction?.url;
       if (!redirectUrl) {
+        // Surface Plankton's failure details so the client + Cloud Functions
+        // logs both show WHY. Common reasons observed live:
+        //   - configuration_error: gateway auth broken on platform side
+        //   - provider_error: Peach rejected (e.g. domain not allowlisted,
+        //     merchantTransactionId too short)
+        const details = {
+          planktonPaymentId: planktonRes.paymentId,
+          planktonStatus: planktonRes.status,
+          failureReason: planktonRes.failureReason ?? null,
+          failureMessage: planktonRes.failureMessage ?? null,
+          providerName: (planktonRes as { providerName?: string }).providerName ?? null,
+        };
+        console.error("Plankton payment failed at initiate", details);
+        const reasonText =
+          planktonRes.failureMessage ||
+          planktonRes.failureReason ||
+          `status=${planktonRes.status}`;
         throw new Error(
-          `Plankton response missing requiresAction.url (status=${planktonRes.status})`,
+          `Plankton payment failed: ${reasonText} (paymentId=${planktonRes.paymentId})`,
         );
       }
 

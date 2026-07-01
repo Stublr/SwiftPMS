@@ -56,9 +56,13 @@ export interface PaymentResponse {
   orderReference?: string;
   failureReason?: string;
   failureMessage?: string;
+  providerName?: string;
+  providerReference?: string;
   requiresAction?: {
     type?: "redirect";
+    actionType?: string;
     url: string;
+    httpMethod?: string;
   };
   createdAt?: string;
   updatedAt?: string;
@@ -119,6 +123,23 @@ export async function createPlanktonPayment(
     tenantId: PLANKTON_TENANT_ID,
     sandbox: PLANKTON_SANDBOX.value() === "true",
   };
+  // Log the outbound request (minus PII / secrets) so we can trace what
+  // shape we sent when things go wrong. Never log the Authorization header
+  // or the full customer object; the fields below are safe.
+  console.log("Plankton POST /payments", {
+    idempotencyKey: input.idempotencyKey,
+    amount: input.amount,
+    currency: input.currency,
+    paymentMethod: input.paymentMethod,
+    channel: input.channel,
+    captureMode: input.captureMode,
+    orderReference: input.orderReference,
+    tenantId: PLANKTON_TENANT_ID,
+    sandbox: body.sandbox,
+    returnUrl: input.returnUrl,
+    shopperResultUrl: input.shopperResultUrl,
+    customerEmail: input.customer.email ? "<set>" : "<absent>",
+  });
   const res = await fetch(`${baseUrl()}/payments`, {
     method: "POST",
     headers: authHeaders(),
@@ -126,11 +147,23 @@ export async function createPlanktonPayment(
   });
   const text = await res.text();
   if (!res.ok) {
+    console.error(`Plankton POST /payments HTTP ${res.status}`, text.slice(0, 500));
     throw new Error(
       `Plankton POST /payments failed (${res.status}): ${text.slice(0, 500)}`,
     );
   }
-  return JSON.parse(text) as PaymentResponse;
+  const parsed = JSON.parse(text) as PaymentResponse;
+  // Always log the terminal-signal fields so debugging doesn't require a
+  // repro via curl.
+  console.log("Plankton POST /payments response", {
+    paymentId: parsed.paymentId,
+    status: parsed.status,
+    failureReason: parsed.failureReason ?? null,
+    failureMessage: parsed.failureMessage ?? null,
+    providerName: parsed.providerName ?? null,
+    hasRequiresAction: Boolean(parsed.requiresAction?.url),
+  });
+  return parsed;
 }
 
 export async function getPlanktonPayment(
