@@ -55,7 +55,7 @@ export function HomePage() {
   return (
     <div className="flex flex-col">
       {/* ============================ HERO ============================ */}
-      <section className="relative isolate flex min-h-[70vh] flex-col justify-center overflow-hidden sm:min-h-[88vh] sm:block sm:items-center">
+      <section className="relative isolate flex flex-col overflow-hidden sm:min-h-[88vh] sm:justify-center">
         <img
           src="/images/lodge/pool-sunset.jpeg"
           alt="Lodge pool at sunset"
@@ -63,7 +63,7 @@ export function HomePage() {
         />
         <div className="hero-scrim absolute inset-0 -z-10" />
 
-        <div className="mx-auto w-full max-w-6xl px-6 pb-44 pt-20 sm:pt-28">
+        <div className="mx-auto w-full max-w-6xl px-6 pb-8 pt-20 sm:pb-44 sm:pt-28">
           <div className="max-w-2xl animate-fade-up">
             <span className="eyebrow inline-flex items-center gap-2 text-leaf">
               <span className="h-px w-8 bg-leaf" />
