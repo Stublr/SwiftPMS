@@ -15,6 +15,8 @@ export interface PropertyInfo {
   checkInTime: string;
   checkOutTime: string;
   isActive: boolean;
+  /** Absolute or root-relative URL of the property's logo. Rendered on the booking PDF header if present. */
+  logoUrl: string | null;
 }
 
 export async function getPropertyInfo(propertyId?: string): Promise<PropertyInfo> {
@@ -50,6 +52,7 @@ function mapProperty(id: string, data: Record<string, unknown>): PropertyInfo {
     checkInTime: (data.checkInTime as string) ?? "14:00",
     checkOutTime: (data.checkOutTime as string) ?? "11:00",
     isActive: data.isActive as boolean,
+    logoUrl: (data.logoUrl as string) ?? null,
   };
 }
 

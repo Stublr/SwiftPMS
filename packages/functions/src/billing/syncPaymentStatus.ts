@@ -543,6 +543,9 @@ async function sendConfirmationEmailForIntent(
     propertyName: (prop?.name as string) ?? "Our Lodge",
     propertyEmail: (prop?.email as string) ?? undefined,
     propertyPhone: (prop?.phone as string) ?? undefined,
+    // Absolute URL — email clients fetch this from off-server, so relative
+    // paths can't resolve. The property doc stores an absolute URL.
+    propertyLogoUrl: (prop?.logoUrl as string | undefined) ?? undefined,
     roomTypeName: roomTypeNameOut,
     roomName: null,
     checkInDate: primary.checkInDate as string,

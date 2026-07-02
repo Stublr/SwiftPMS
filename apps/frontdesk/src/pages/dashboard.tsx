@@ -62,7 +62,17 @@ export function DashboardPage() {
   const totalRooms = rooms.length;
   const occupiedRooms = rooms.filter((r) => r.status === RoomStatus.OCCUPIED).length;
   const occupancyRate = totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
-  const revenueToday = aggregates?.revenue ?? 0;
+  // Revenue Today shows the booked-value of today's arrivals (confirmed +
+  // checked-in reservations that check in today). This updates the moment a
+  // booking is made — the dailyAggregates.revenue field only bumps on
+  // check-out and stays R0 all day for same-day arrivals, which the user
+  // (correctly) called out as broken. Add the aggregator's realized-revenue
+  // number on top to include any same-day checkouts too.
+  const bookedRevenueToday = todayArrivals
+    .filter((r) => r.status === "confirmed" || r.status === "checked_in")
+    .reduce((sum, r) => sum + (r.totalRoomCharges ?? 0), 0);
+  const realizedRevenueToday = aggregates?.revenue ?? 0;
+  const revenueToday = bookedRevenueToday + realizedRevenueToday;
 
   const statusCounts = {
     available: rooms.filter((r) => r.status === RoomStatus.AVAILABLE).length,
@@ -109,6 +119,11 @@ export function DashboardPage() {
           <p className="text-muted-foreground text-sm">Revenue Today</p>
           <p className="mt-1 text-2xl font-bold">
             {loading ? "..." : formatCents(revenueToday)}
+          </p>
+          <p className="text-muted-foreground mt-1 text-xs">
+            {todayArrivals.length > 0
+              ? `Booked value of ${todayArrivals.length} arrival${todayArrivals.length === 1 ? "" : "s"}`
+              : "No arrivals booked"}
           </p>
         </div>
       </div>

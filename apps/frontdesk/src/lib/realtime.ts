@@ -11,7 +11,12 @@ function getPath() {
 export function onRooms(callback: (rooms: Room[]) => void): Unsubscribe {
   const { tenantId, propertyId } = getPath();
   const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/rooms`);
-  return onSnapshot(colRef, (snap) => {
+  // Only stream ACTIVE rooms — inactive rooms (e.g. hidden Eden Park sites)
+  // should not appear in dashboard occupancy, room board grids, or any other
+  // client view. Admin pages that need to see deactivated inventory query
+  // rooms directly without this helper.
+  const q = query(colRef, where("isActive", "==", true));
+  return onSnapshot(q, (snap) => {
     callback(snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Room));
   }, () => callback([]));
 }

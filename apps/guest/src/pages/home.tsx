@@ -6,13 +6,6 @@ import { useGuestAuthStore } from "@/stores/auth.store";
 import { getAllProperties, type PropertyInfo } from "@/services/property";
 import { BrandMark } from "@/components/brand/logo";
 
-const GALLERY = [
-  { src: "/images/lodge/lodge-lounge.jpeg", label: "Lounge" },
-  { src: "/images/lodge/chalet-exterior.jpeg", label: "Chalets" },
-  { src: "/images/lodge/tented-camp-interior.jpeg", label: "Tented camp" },
-  { src: "/images/lodge/bathroom.jpeg", label: "Suites" },
-];
-
 export function HomePage() {
   const navigate = useUIStore((s) => s.navigate);
   const setDates = useBookingStore((s) => s.setDates);
@@ -59,12 +52,7 @@ export function HomePage() {
         {/* Background wrapper — overflow-hidden lives HERE so the scale-105
             image is clipped inside the hero, without clipping the search
             card that's translate-y-1/2'd below the section on desktop. */}
-        <div className="absolute inset-0 -z-10 overflow-hidden">
-          <img
-            src="/images/lodge/pool-sunset.jpeg"
-            alt="Lodge pool at sunset"
-            className="h-full w-full scale-105 object-cover"
-          />
+        <div className="absolute inset-0 -z-10 overflow-hidden bg-brand-gradient">
           <div className="hero-scrim absolute inset-0" />
         </div>
 
@@ -79,8 +67,8 @@ export function HomePage() {
             </h1>
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-white/85">
               {single
-                ? `Welcome to ${single.name}. Reserve your bush escape in a few unhurried clicks.`
-                : "A collection of lodges, chalets and tented camps in the wild. Book direct for the best rate — confirmed in seconds."}
+                ? `Welcome to ${single.name}. Reserve your campsite in a few unhurried clicks.`
+                : "Book direct for the best rate — confirmed in seconds."}
             </p>
           </div>
         </div>
@@ -283,25 +271,6 @@ export function HomePage() {
         </section>
       )}
 
-      {/* ============================ GALLERY BAND ============================ */}
-      <section className="mx-auto w-full max-w-6xl px-6 py-12">
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-          {GALLERY.map((g, i) => (
-            <div key={g.src} className={galleryTile(i)}>
-              <img
-                src={g.src}
-                alt={g.label}
-                className="h-full w-full object-cover transition-transform duration-700 hover:scale-110"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-primary/60 via-transparent to-transparent" />
-              <span className="absolute bottom-3 left-4 text-sm font-medium text-white drop-shadow">
-                {g.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* ============================ FEATURES ============================ */}
       <section className="mx-auto w-full max-w-6xl px-6 py-16 sm:py-24">
         <SectionHeading
@@ -455,9 +424,3 @@ function FeatureCard({
   );
 }
 
-/** First gallery tile spans two columns on large screens for rhythm. */
-function galleryTile(i: number): string {
-  const base =
-    "group relative overflow-hidden rounded-2xl shadow-soft h-44 sm:h-56";
-  return i === 0 ? `${base} lg:col-span-2 lg:h-auto` : base;
-}

@@ -2,6 +2,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { Header } from "@/components/layout/header";
+import { InstallPrompt } from "@/components/install-prompt";
 import { Sidebar } from "@/components/layout/sidebar";
 import { queryClient } from "@/lib/query-client";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
@@ -129,6 +130,9 @@ export function App() {
       ) : (
         <LoginPage onSuccess={handleLoginSuccess} />
       )}
+      {/* Renders on both auth states — install is useful whether the guest is
+          logging in for the first time or already signed in. */}
+      <InstallPrompt />
     </QueryClientProvider>
   );
 }

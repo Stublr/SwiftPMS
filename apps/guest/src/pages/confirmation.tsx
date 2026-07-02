@@ -212,6 +212,7 @@ export function ConfirmationPage() {
       propertyAddress: propInfo?.address ?? undefined,
       propertyPhone: propInfo?.phone ?? undefined,
       propertyEmail: propInfo?.email ?? undefined,
+      propertyLogoUrl: propInfo?.logoUrl ?? null,
       amenities: propInfo?.amenities,
       checkInTime: propInfo?.checkInTime,
       checkOutTime: propInfo?.checkOutTime,

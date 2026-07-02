@@ -26,6 +26,8 @@ export interface BookingEmailData {
   propertyName: string;
   propertyEmail?: string;
   propertyPhone?: string;
+  /** Absolute URL to the property logo. Rendered in the header of the SendGrid dynamic template if the template references {{logoUrl}}. Absolute (not root-relative) because email clients render off-server. */
+  propertyLogoUrl?: string | null;
   roomTypeName: string;
   roomName: string | null;
   checkInDate: string;
@@ -68,7 +70,7 @@ function parseFromAddress(raw: string): { email: string; name?: string } {
  */
 function buildDynamicTemplateData(data: BookingEmailData) {
   const {
-    guestName, propertyName, propertyEmail, propertyPhone,
+    guestName, propertyName, propertyEmail, propertyPhone, propertyLogoUrl,
     roomTypeName, roomName, checkInDate, checkOutDate,
     nightCount, adults, children, totalAmount, ratePerNight,
     reservationId, specialRequests, checkInTime, checkOutTime,
@@ -77,6 +79,7 @@ function buildDynamicTemplateData(data: BookingEmailData) {
   return {
     guestName,
     propertyName,
+    logoUrl: propertyLogoUrl || null,
     refId: reservationId.slice(0, 8).toUpperCase(),
     roomTypeName,
     roomName: roomName || null,

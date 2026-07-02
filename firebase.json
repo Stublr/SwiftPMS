@@ -9,6 +9,29 @@
           "source": "**",
           "destination": "/index.html"
         }
+      ],
+      "headers": [
+        {
+          "//": "No-cache fallback for every request path (SPA routes like `/`, `/today`, `/check-in` all resolve to index.html via the rewrite above, but Firebase matches header rules against the REQUEST path — not the rewritten path — so we need a wildcard here). The next rule pins hashed asset URLs to immutable, overriding this for /assets/**.",
+          "source": "**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+          ]
+        },
+        {
+          "//": "Hashed asset filenames change on every rebuild, so they're safe to cache forever. This rule comes LAST — the last matching header wins for the same key, so /assets/** gets immutable instead of the wildcard's no-cache.",
+          "source": "/assets/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+          ]
+        },
+        {
+          "//": "Icons are hashed by name too and rarely change — cache them a week.",
+          "source": "/icons/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
+        }
       ]
     },
     {
@@ -19,6 +42,29 @@
         {
           "source": "**",
           "destination": "/index.html"
+        }
+      ],
+      "headers": [
+        {
+          "//": "No-cache fallback for every request path (SPA routes like `/`, `/today`, `/check-in` all resolve to index.html via the rewrite above, but Firebase matches header rules against the REQUEST path — not the rewritten path — so we need a wildcard here). The next rule pins hashed asset URLs to immutable, overriding this for /assets/**.",
+          "source": "**",
+          "headers": [
+            { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+          ]
+        },
+        {
+          "//": "Hashed asset filenames change on every rebuild, so they're safe to cache forever. This rule comes LAST — the last matching header wins for the same key, so /assets/** gets immutable instead of the wildcard's no-cache.",
+          "source": "/assets/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+          ]
+        },
+        {
+          "//": "Icons are hashed by name too and rarely change — cache them a week.",
+          "source": "/icons/**",
+          "headers": [
+            { "key": "Cache-Control", "value": "public, max-age=604800" }
+          ]
         }
       ]
     }

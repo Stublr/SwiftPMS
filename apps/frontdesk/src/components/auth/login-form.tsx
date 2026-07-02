@@ -42,7 +42,7 @@ export function LoginForm({ onSuccess }: { onSuccess: () => void }) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="border-border mt-1 block w-full rounded-md border px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          placeholder="admin@demo.com"
+          placeholder="you@example.com"
           required
           autoFocus
         />

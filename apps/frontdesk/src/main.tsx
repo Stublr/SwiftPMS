@@ -30,8 +30,25 @@ if (
     navigator.serviceWorker
       .register("/sw.js")
       .then((reg) => {
-        // Poll for updates every 60s while the tab is open so a deploy
-        // that landed mid-session gets picked up promptly.
+        // Fire an update check IMMEDIATELY on mount too — the browser only
+        // checks the SW script once every 24h by default. If a user opens
+        // the tab after a deploy, we don't want them to see stale bundles
+        // until the next 60s poll (or worse, wait 24h). This forces an
+        // update-if-changed on every page open.
+        reg.update().catch(() => {
+          // Network blip — the periodic poll below picks it up
+        });
+
+        // Also update whenever the tab becomes visible again (user returning
+        // from another app / home screen). Catches the case where the tab
+        // sat backgrounded through a deploy.
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "visible") {
+            reg.update().catch(() => {});
+          }
+        });
+
+        // Long-running poll for tabs left open all day.
         setInterval(() => {
           reg.update().catch(() => {
             // Network blip — try again next tick

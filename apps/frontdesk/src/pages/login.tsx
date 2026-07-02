@@ -52,13 +52,6 @@ export function LoginPage({ onSuccess }: { onSuccess: () => void }) {
         ) : (
           <PinLoginForm onSuccess={onSuccess} />
         )}
-
-        {/* Demo credentials hint */}
-        <div className="border-border rounded-md border bg-slate-50 p-3 text-xs text-muted-foreground">
-          <p className="font-medium">Demo credentials:</p>
-          <p>Email: admin@demo.com</p>
-          <p>Password: password123 | PIN: 1234</p>
-        </div>
       </div>
     </div>
   );

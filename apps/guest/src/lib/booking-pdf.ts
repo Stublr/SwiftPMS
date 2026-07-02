@@ -11,6 +11,8 @@ export interface BookingPdfData {
   propertyAddress?: string;
   propertyPhone?: string;
   propertyEmail?: string;
+  /** URL to the property logo (root-relative like "/logos/sugarloaf.png" or absolute). Rendered in the header if present; falls back to a text brand otherwise. */
+  propertyLogoUrl?: string | null;
   roomTypeName?: string;
   roomNumber?: string;
   amenities?: string[];
@@ -59,6 +61,29 @@ function statusLabel(s: string): string {
   return { confirmed: "Confirmed", checked_in: "Checked In", checked_out: "Checked Out", cancelled: "Cancelled", no_show: "No Show" }[s] ?? s;
 }
 
+/**
+ * Fetch a logo URL and return it as a base64 data URI. Inlining avoids CORS
+ * / network issues when the browser prints the popup to PDF — external
+ * <img src> requests can be blocked by the print engine or fail on airplane
+ * mode. Returns null on failure so the caller can fall back to the text
+ * brand.
+ */
+async function fetchLogoAsDataUri(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const blob = await res.blob();
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(typeof reader.result === "string" ? reader.result : null);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
+  } catch {
+    return null;
+  }
+}
+
 const MIDDOT = "·";
 const TIMES = "×";
 const EM_DASH = "—";
@@ -75,6 +100,7 @@ body{font:11px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica
 .site-lbl{display:inline-block;margin-bottom:8px;padding:3px 10px;border-radius:999px;background:#003580;color:#fff;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;}
 .hdr{display:flex;justify-content:space-between;align-items:flex-start;padding-bottom:10px;border-bottom:3px solid #003580;margin-bottom:14px;gap:16px;}
 .brand{font-size:18px;font-weight:800;color:#003580;}
+.brand-logo{display:block;height:56px;width:auto;max-width:200px;object-fit:contain;}
 .cb{text-align:right;}
 .cb .cl{font-size:13px;font-weight:700;color:#333;}
 .cb .cn{font-size:11px;color:#003580;font-weight:700;}
@@ -129,6 +155,8 @@ interface SectionExtras {
   siteIndex?: number;
   /** Total sites in the group booking. Undefined for solo. */
   siteCount?: number;
+  /** Base64 data URI of the property logo. Inlined so the printed PDF doesn't depend on network access. */
+  logoDataUri?: string | null;
 }
 
 /**
@@ -178,9 +206,15 @@ async function buildSection(
     ? `<div class="site-lbl">Site ${extras.siteIndex} of ${extras.siteCount}</div>`
     : "";
 
+  // Left side of the header: logo if we have one (inlined as data URI to
+  // survive the print-to-PDF flow), otherwise the text brand.
+  const brandBlock = extras.logoDataUri
+    ? `<img class="brand-logo" src="${extras.logoDataUri}" alt="${propertyName ?? "Property"}"/>`
+    : `<div class="brand">${propertyName ?? "SwiftPMS"}</div>`;
+
   return `<div class="p">
 ${siteBadge}
-<div class="hdr"><div><div class="brand">${propertyName ?? "SwiftPMS"}</div></div>
+<div class="hdr"><div>${brandBlock}</div>
 <div class="cb"><div class="cl">Booking confirmation</div><div class="cn">CONFIRMATION NUMBER: ${refId}</div>
 <div class="st">STATUS: <span class="badge ${r.status}">${statusLabel(r.status)}</span></div></div></div>
 
@@ -241,9 +275,18 @@ async function buildHtmlDocument(items: BookingPdfData[]): Promise<string> {
     items.length > 1
       ? `Group booking confirmation ${EM_DASH} ${items.length} sites`
       : `Booking Confirmation - ${refId}`;
+  // Resolve the property logo ONCE and reuse across sections — every section
+  // in a group booking is for the same property, and inlining a ~65 KB base64
+  // string per section would bloat the document.
+  const logoUrl = first.propertyLogoUrl ?? null;
+  const logoDataUri = logoUrl ? await fetchLogoAsDataUri(logoUrl) : null;
   const sections = await Promise.all(
     items.map((data, i) =>
-      buildSection(data, { siteIndex: i + 1, siteCount: items.length }),
+      buildSection(data, {
+        siteIndex: i + 1,
+        siteCount: items.length,
+        logoDataUri,
+      }),
     ),
   );
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
