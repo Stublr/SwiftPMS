@@ -12,10 +12,50 @@ import {
 
 const PENDING_KEY = "swiftpms.pendingPayment";
 
+/**
+ * Snapshot of the booking store at the moment we send the guest to Peach.
+ * The Zustand booking store is in-memory only, so after the Peach redirect
+ * returns to /confirmation, the store is empty. Restoring from this snapshot
+ * lets the confirmation page render dates / totals / QR-download without
+ * re-fetching the reservation.
+ */
+export interface PendingBookingSnapshot {
+  checkInDate: string;
+  checkOutDate: string;
+  adults: number;
+  children: number;
+  selectedPropertyId: string;
+  selectedRoomTypeId: string;
+  reservationId: string;
+  nightCount: number;
+  roomRate: number;
+  totalRoomCharges: number;
+}
+
+/**
+ * Group-booking companion snapshot. Present when the guest booked multiple
+ * campsites in one transaction — the confirmation page restores this so it
+ * can list every reservation, not just the primary one used for payment.
+ */
+export interface PendingGroupSnapshot {
+  groupId: string;
+  reservationIds: string[];
+  folioId: string;
+  items: {
+    roomTypeId: string;
+    roomTypeName: string;
+    adults: number;
+    children: number;
+    totalRoomCharges: number;
+  }[];
+}
+
 interface PendingRef {
   paymentIntentId: string;
   tenantId: string;
   propertyId: string;
+  snapshot?: PendingBookingSnapshot;
+  groupSnapshot?: PendingGroupSnapshot;
 }
 
 export function readPendingFromStorage(): PendingRef | null {

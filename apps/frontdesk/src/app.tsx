@@ -72,6 +72,9 @@ function AuthenticatedLayout() {
   }
 
   // Property selected -- show main layout with desktop sidebar + mobile bottom-tab nav
+  // Safe-area: pt on the header (below iPhone Dynamic Island / notch) is applied
+  // inside Header itself; pb here reserves space for the MobileNav (~56px) plus
+  // the iOS home-indicator safe area.
   return (
     <div className="flex h-screen bg-secondary">
       <div className="hidden md:block">
@@ -79,7 +82,12 @@ function AuthenticatedLayout() {
       </div>
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-auto pb-16 md:pb-0">
+        <main
+          className="flex-1 overflow-auto md:pb-0"
+          style={{
+            paddingBottom: "calc(4rem + env(safe-area-inset-bottom, 0px))",
+          }}
+        >
           <PageRouter />
         </main>
         <MobileNav />

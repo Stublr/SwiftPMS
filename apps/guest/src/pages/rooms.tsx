@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
-import { useBookingStore } from "@/stores/booking.store";
+import { useBookingStore, type GroupBookingItem } from "@/stores/booking.store";
 import {
   checkAvailability,
   type AvailableRoomType,
 } from "@/services/availability";
 import { getAllProperties, type PropertyInfo } from "@/services/property";
 import { BrandMark } from "@/components/brand/logo";
-import { formatCents } from "@swiftpms/shared";
+import { calculateTieredStayTotal, formatCents } from "@swiftpms/shared";
 
 interface PropertyAvailability {
   property: PropertyInfo;
@@ -27,6 +27,7 @@ export function RoomsPage() {
   const setDates = useBookingStore((s) => s.setDates);
   const setRoomType = useBookingStore((s) => s.setRoomType);
   const setProperty = useBookingStore((s) => s.setProperty);
+  const setGroupItems = useBookingStore((s) => s.setGroupItems);
 
   const [properties, setProperties] = useState<PropertyAvailability[]>([]);
   const [loadingProps, setLoadingProps] = useState(true);
@@ -57,8 +58,10 @@ export function RoomsPage() {
 
     for (const pa of properties) {
       try {
-        const allRooms = await checkAvailability(ci, co, pa.property.id);
-        const rooms = allRooms.filter((r) => r.maxOccupancy >= totalGuests);
+        // Keep ALL room types visible even when a single site can't fit the
+        // group — the card will suggest a multi-site booking instead. Only
+        // hide room types with zero total inventory available.
+        const rooms = await checkAvailability(ci, co, pa.property.id);
         setProperties((prev) =>
           prev.map((p) =>
             p.property.id === pa.property.id ? { ...p, rooms, loading: false } : p,
@@ -82,9 +85,48 @@ export function RoomsPage() {
     setDates(localCheckIn, localCheckOut);
   }
 
-  function handleBookNow(propertyId: string, roomTypeId: string) {
+  function handleBookNow(
+    propertyId: string,
+    room: AvailableRoomType,
+    quantity: number,
+  ) {
     setProperty(propertyId);
-    setRoomType(roomTypeId);
+    setRoomType(room.id);
+    if (quantity <= 1) {
+      // Legacy solo flow — leave groupItems null.
+      setGroupItems(null);
+    } else {
+      // Multi-site: distribute total adults + children evenly across N sites,
+      // per-site guest count then drives tiered pricing correctly.
+      const items: GroupBookingItem[] = [];
+      for (let i = 0; i < quantity; i++) {
+        const a = Math.floor(adults / quantity) + (i < adults % quantity ? 1 : 0);
+        const c = Math.floor(children / quantity) + (i < children % quantity ? 1 : 0);
+        const perSiteAdults = Math.max(1, a);
+        const perSiteChildren = c;
+        let perSiteTotal = 0;
+        if (room.tieredPricing && checkInDate && checkOutDate) {
+          const calc = calculateTieredStayTotal(
+            room.tieredPricing,
+            checkInDate,
+            checkOutDate,
+            perSiteAdults,
+            perSiteChildren,
+          );
+          perSiteTotal = calc.total;
+        } else if (checkInDate && checkOutDate) {
+          perSiteTotal = room.baseRate * nightCount(checkInDate, checkOutDate);
+        }
+        items.push({
+          roomTypeId: room.id,
+          roomTypeName: room.name,
+          adults: perSiteAdults,
+          children: perSiteChildren,
+          totalRoomCharges: perSiteTotal,
+        });
+      }
+      setGroupItems(items);
+    }
     navigate("/booking");
   }
 
@@ -220,7 +262,8 @@ export function RoomsPage() {
                   key={room.id}
                   room={room}
                   nights={hasDates ? nightCount(checkInDate, checkOutDate) : 1}
-                  onBook={() => handleBookNow(property.id, room.id)}
+                  totalGuests={totalGuests}
+                  onBook={(qty) => handleBookNow(property.id, room, qty)}
                 />
               ))}
             </div>
@@ -261,12 +304,39 @@ function EmptyNote({ children }: { children: React.ReactNode }) {
 function RoomTypeCard({
   room,
   nights,
+  totalGuests,
   onBook,
 }: {
   room: AvailableRoomType;
   nights: number;
-  onBook: () => void;
+  totalGuests: number;
+  onBook: (quantity: number) => void;
 }) {
+  // Auto-suggest a multi-site booking when the group is too big for one site.
+  // Cap at available inventory. Also cap at 5 sites — beyond that they'd
+  // more likely want to talk to us directly.
+  const suggestedQty = Math.max(
+    1,
+    Math.min(
+      room.available,
+      5,
+      totalGuests > 0 && room.maxOccupancy > 0
+        ? Math.ceil(totalGuests / room.maxOccupancy)
+        : 1,
+    ),
+  );
+  const [quantity, setQuantity] = useState<number>(suggestedQty);
+  // Sync quantity down if the auto-suggest changes (e.g. guest count changes).
+  useEffect(() => {
+    setQuantity(suggestedQty);
+  }, [suggestedQty]);
+  const maxQty = Math.min(room.available, 5);
+  const showGroupHint = suggestedQty > 1;
+  const perSite = room.tieredPricing
+    ? room.tieredPricing.standard.baseRate
+    : room.baseRate;
+  const groupTotalEstimate = perSite * nights * quantity;
+
   const badge =
     room.available > 3
       ? "bg-leaf-soft text-leaf-foreground"
@@ -330,7 +400,19 @@ function RoomTypeCard({
             )}
           </div>
 
-          <div className="mt-5 flex items-end justify-between border-t border-border pt-5">
+          {/* Auto-suggest banner: group too big for a single site → recommend multiple. */}
+          {showGroupHint && (
+            <div className="mt-4 rounded-xl border border-accent/30 bg-accent-soft/50 p-3 text-sm text-accent-dark">
+              <p className="font-medium">
+                Your group of {totalGuests} won't fit one site (max {room.maxOccupancy}).
+              </p>
+              <p className="mt-0.5 text-xs">
+                We've suggested {suggestedQty} sites — guests split evenly across them. One payment, one confirmation.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-col gap-4 border-t border-border pt-5 sm:flex-row sm:items-end sm:justify-between">
             <div>
               {room.tieredPricing ? (
                 <>
@@ -338,7 +420,7 @@ function RoomTypeCard({
                     {formatCents(room.tieredPricing.standard.baseRate)}
                   </span>
                   <span className="text-sm text-muted-foreground">
-                    {" "}/ night ({room.tieredPricing.standard.basePersonCount}{" "}
+                    {" "}/ night per site ({room.tieredPricing.standard.basePersonCount}{" "}
                     {room.tieredPricing.standard.basePersonCount === 1
                       ? "person"
                       : "people"}{" "}
@@ -360,22 +442,47 @@ function RoomTypeCard({
                   <span className="font-display text-2xl font-semibold text-foreground">
                     {formatCents(room.baseRate)}
                   </span>
-                  <span className="text-sm text-muted-foreground"> / night</span>
+                  <span className="text-sm text-muted-foreground"> / night per site</span>
                   {nights > 1 && (
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {formatCents(room.baseRate * nights)} total for {nights} nights
+                      {formatCents(room.baseRate * nights)} per site for {nights} nights
                     </p>
                   )}
                 </>
               )}
+              {quantity > 1 && (
+                <p className="mt-1 text-xs font-medium text-accent-dark">
+                  Group estimate: {formatCents(groupTotalEstimate)} for {quantity} sites × {nights} night{nights !== 1 ? "s" : ""}
+                </p>
+              )}
             </div>
-            <button
-              onClick={onBook}
-              disabled={room.available === 0}
-              className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Book Now
-            </button>
+
+            <div className="flex items-center gap-3">
+              {/* Quantity picker — only show >1 option when there's inventory for it. */}
+              {maxQty > 1 && (
+                <label className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-sm">
+                  <span className="text-xs font-medium uppercase text-muted-foreground">Sites</span>
+                  <select
+                    value={quantity}
+                    onChange={(e) => setQuantity(Number(e.target.value))}
+                    className="bg-transparent text-sm font-semibold text-foreground focus:outline-none"
+                  >
+                    {Array.from({ length: maxQty }, (_, i) => i + 1).map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <button
+                onClick={() => onBook(quantity)}
+                disabled={room.available === 0}
+                className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {quantity > 1 ? `Book ${quantity} Sites` : "Book Now"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

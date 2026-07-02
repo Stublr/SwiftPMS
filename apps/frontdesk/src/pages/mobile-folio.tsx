@@ -5,6 +5,7 @@ import {
   PaymentMethod,
   formatCents,
   type Folio,
+  type Reservation,
 } from "@swiftpms/shared";
 
 import {
@@ -12,7 +13,11 @@ import {
   getFolioByReservation,
   processPayment,
 } from "@/services/billing";
-import { checkInReservation, checkOutReservation } from "@/services/reservations";
+import {
+  checkInReservation,
+  checkOutReservation,
+  getReservation,
+} from "@/services/reservations";
 import { useUIStore } from "@/stores/ui.store";
 
 function readResId(): string | null {
@@ -24,10 +29,12 @@ export function MobileFolioPage() {
   const navigate = useUIStore((s) => s.navigate);
   const [resId, setResId] = useState<string | null>(null);
   const [folio, setFolio] = useState<Folio | null>(null);
+  const [reservation, setReservation] = useState<Reservation | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"none" | "charge" | "payment">("none");
   const [busy, setBusy] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   // Form state
   const [chargeCategory, setChargeCategory] = useState<string>(ChargeCategory.OTHER);
@@ -42,7 +49,7 @@ export function MobileFolioPage() {
     setResId(id);
     if (id) load(id);
     else {
-      setError("No reservation specified");
+      setError("No booking selected. Tap a booking from Today, or use Scan/Walk-in, to open its folio.");
       setLoading(false);
     }
   }, []);
@@ -51,8 +58,12 @@ export function MobileFolioPage() {
     setLoading(true);
     setError(null);
     try {
-      const f = await getFolioByReservation(id);
+      const [f, r] = await Promise.all([
+        getFolioByReservation(id),
+        getReservation(id),
+      ]);
       setFolio(f);
+      setReservation(r);
       if (f) setPayAmount((f.balance / 100).toFixed(2));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load failed");
@@ -61,12 +72,22 @@ export function MobileFolioPage() {
     }
   }
 
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2500);
+  }
+
   async function handleAddCharge(e: React.FormEvent) {
     e.preventDefault();
     if (!folio) return;
-    const cents = Math.round(parseFloat(chargeAmount) * 100);
-    if (!cents || cents <= 0) return;
+    const parsed = parseFloat(chargeAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setError("Enter a valid charge amount (e.g. 150.00).");
+      return;
+    }
+    const cents = Math.round(parsed * 100);
     setBusy(true);
+    setError(null);
     try {
       await addCharge({
         folioId: folio.id,
@@ -79,6 +100,7 @@ export function MobileFolioPage() {
       setChargeAmount("");
       setMode("none");
       if (resId) await load(resId);
+      showToast("Charge added.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Add charge failed");
     } finally {
@@ -89,9 +111,14 @@ export function MobileFolioPage() {
   async function handleProcessPayment(e: React.FormEvent) {
     e.preventDefault();
     if (!folio) return;
-    const cents = Math.round(parseFloat(payAmount) * 100);
-    if (!cents || cents <= 0) return;
+    const parsed = parseFloat(payAmount);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setError("Enter a valid payment amount (e.g. 250.00).");
+      return;
+    }
+    const cents = Math.round(parsed * 100);
     setBusy(true);
+    setError(null);
     try {
       await processPayment({
         folioId: folio.id,
@@ -101,7 +128,9 @@ export function MobileFolioPage() {
       });
       setMode("none");
       setPayRef("");
+      setPayAmount("");
       if (resId) await load(resId);
+      showToast(`Payment of ${formatCents(cents)} recorded.`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Payment failed");
     } finally {
@@ -112,9 +141,11 @@ export function MobileFolioPage() {
   async function handleCheckIn() {
     if (!resId) return;
     setBusy(true);
+    setError(null);
     try {
       await checkInReservation(resId);
       await load(resId);
+      showToast("Guest checked in.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Check-in failed");
     } finally {
@@ -125,9 +156,11 @@ export function MobileFolioPage() {
   async function handleCheckOut() {
     if (!resId) return;
     setBusy(true);
+    setError(null);
     try {
       await checkOutReservation(resId);
       await load(resId);
+      showToast("Guest checked out.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Check-out failed");
     } finally {
@@ -146,7 +179,7 @@ export function MobileFolioPage() {
   if (error || !folio) {
     return (
       <div className="mx-auto max-w-md px-4 py-12 text-center">
-        <p className="text-sm text-destructive">{error ?? "Folio not found"}</p>
+        <p className="text-sm text-destructive">{error ?? "We couldn't find the folio for this booking."}</p>
         <button
           onClick={() => navigate("/today")}
           className="mt-4 rounded-md border border-border px-4 py-2 text-sm"
@@ -159,6 +192,11 @@ export function MobileFolioPage() {
 
   return (
     <div className="mx-auto max-w-md px-4 py-4 pb-24">
+      {toast && (
+        <div className="fixed left-1/2 top-4 z-50 -translate-x-1/2 rounded-full bg-success px-4 py-2 text-sm font-medium text-white shadow-lg">
+          {toast}
+        </div>
+      )}
       <button
         onClick={() => navigate("/today")}
         className="mb-3 text-sm text-muted-foreground"
@@ -252,21 +290,41 @@ export function MobileFolioPage() {
         </div>
       )}
 
-      {/* Check-in / Check-out shortcuts */}
+      {/* Check-in / Check-out shortcuts. Buttons only show when the reservation
+          is in the right state — Check-in only when confirmed, Check-out only
+          when currently checked_in. Prevents the "click once, nothing happens,
+          click again, error" bug from stale UI. */}
       <div className="mt-3">
-        <button
-          onClick={handleCheckIn}
-          disabled={busy}
-          className="w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm font-semibold text-primary disabled:opacity-50"
-        >
-          Check in guest
-        </button>
-        {folio.status === "open" && (
+        {reservation?.status === "confirmed" && (
+          <button
+            onClick={handleCheckIn}
+            disabled={busy}
+            className="w-full rounded-lg border border-primary/30 bg-primary/5 px-3 py-3 text-sm font-semibold text-primary disabled:opacity-50"
+          >
+            {busy ? "Checking in…" : "Check in guest"}
+          </button>
+        )}
+        {reservation?.status === "checked_in" && (
+          <div className="rounded-lg border border-success/30 bg-success/5 px-3 py-3 text-center text-sm font-medium text-success">
+            ✓ Guest is checked in
+          </div>
+        )}
+        {reservation?.status === "checked_out" && (
+          <div className="rounded-lg border border-border bg-secondary px-3 py-3 text-center text-sm text-muted-foreground">
+            Guest has checked out
+          </div>
+        )}
+        {reservation?.status === "cancelled" && (
+          <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-3 text-center text-sm text-destructive">
+            Reservation cancelled
+          </div>
+        )}
+        {reservation?.status === "checked_in" && folio.status === "open" && (
           <button
             onClick={async () => {
               if (folio.balance > 0) {
                 const ok = window.confirm(
-                  `Folio still has an outstanding balance of ${formatCents(folio.balance)}. Check out anyway? The server will reject if balance > 0; record the payment first if you need to.`,
+                  `Folio still has an outstanding balance of ${formatCents(folio.balance)}. Check out anyway? Record the payment first if you'd rather settle now.`,
                 );
                 if (!ok) return;
               }

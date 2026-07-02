@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { PaymentIntentStatus } from "@swiftpms/shared";
+import { PaymentIntentStatus, formatCents } from "@swiftpms/shared";
 
 import { useUIStore } from "@/stores/ui.store";
 import { useBookingStore } from "@/stores/booking.store";
@@ -10,7 +10,7 @@ import {
   clearPendingFromStorage,
   readPendingFromStorage,
 } from "@/pages/payment-result";
-import { downloadBookingPdf } from "@/lib/booking-pdf";
+import { downloadBookingGroupPdf, downloadBookingPdf } from "@/lib/booking-pdf";
 import type { Reservation } from "@swiftpms/shared";
 
 type PaymentSyncState =
@@ -31,6 +31,11 @@ export function ConfirmationPage() {
   const bookingResult = useBookingStore((s) => s.result);
   const resetBooking = useBookingStore((s) => s.reset);
   const setPendingPayment = useBookingStore((s) => s.setPendingPayment);
+  const restoreFromSnapshot = useBookingStore((s) => s.restoreFromSnapshot);
+  const setGroupItems = useBookingStore((s) => s.setGroupItems);
+  const setGroupResult = useBookingStore((s) => s.setGroupResult);
+  const groupItems = useBookingStore((s) => s.groupItems);
+  const groupResult = useBookingStore((s) => s.groupResult);
   const firstName = useGuestAuthStore((s) => s.firstName);
   const lastName = useGuestAuthStore((s) => s.lastName);
   const email = useGuestAuthStore((s) => s.email);
@@ -61,6 +66,24 @@ export function ConfirmationPage() {
       // syncPaymentStatus without propertyId. Show a graceful message.
       setPaymentSync({ kind: "missing_context" });
       return;
+    }
+
+    // Restore the booking-store snapshot so check-in/out dates, duration, and
+    // the Download button all work — the Peach redirect wiped the in-memory
+    // Zustand store on return.
+    if (pending.snapshot) {
+      restoreFromSnapshot(pending.snapshot);
+    }
+    // Group booking: repopulate the group items + result too.
+    if (pending.groupSnapshot) {
+      setGroupItems(pending.groupSnapshot.items);
+      setGroupResult({
+        groupId: pending.groupSnapshot.groupId,
+        reservationIds: pending.groupSnapshot.reservationIds,
+        folioId: pending.groupSnapshot.folioId,
+        nightCount: pending.snapshot?.nightCount ?? 0,
+        totalRoomCharges: pending.snapshot?.totalRoomCharges ?? 0,
+      });
     }
 
     setPaymentSync({ kind: "syncing" });
@@ -140,7 +163,7 @@ export function ConfirmationPage() {
       cancelled = true;
       if (timer) window.clearTimeout(timer);
     };
-  }, [setPendingPayment]);
+  }, [setPendingPayment, restoreFromSnapshot, setGroupItems, setGroupResult]);
 
   // Guard: redirect if no booking data AND this isn't a payment return.
   // Read the paymentId from window.location synchronously — checking
@@ -180,46 +203,81 @@ export function ConfirmationPage() {
   function handleDownload() {
     if (!checkInDate || !checkOutDate) return;
 
-    const reservation: Reservation = {
-      id: bookingResult?.reservationId ?? `res_${Date.now().toString(36)}`,
-      propertyId: selectedPropertyId ?? "",
-      guestId: guestId ?? "",
-      roomId: null,
-      roomTypeId: selectedRoomTypeId ?? "",
-      checkInDate,
-      checkOutDate,
-      nightCount: bookingResult?.nightCount ?? nights,
-      adults,
-      children,
-      status: "confirmed",
-      roomRate: bookingResult?.roomRate ?? 0,
-      totalRoomCharges: bookingResult?.totalRoomCharges ?? 0,
-      specialRequests: null,
-      source: "guest_portal",
-      createdBy: "",
-      checkedInAt: null,
-      checkedInBy: null,
-      checkedOutAt: null,
-      checkedOutBy: null,
-      cancelledAt: null,
-      cancelledBy: null,
-      cancelReason: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    downloadBookingPdf({
-      reservation,
+    // Shared per-item metadata (property/guest/etc.) — identical across all
+    // reservations in a group.
+    const meta = {
       guestName: `${firstName ?? ""} ${lastName ?? ""}`.trim() || "Guest",
       guestEmail: email ?? "",
       propertyName: propInfo?.name,
       propertyAddress: propInfo?.address ?? undefined,
       propertyPhone: propInfo?.phone ?? undefined,
       propertyEmail: propInfo?.email ?? undefined,
-      roomTypeName: rtName || undefined,
       amenities: propInfo?.amenities,
       checkInTime: propInfo?.checkInTime,
       checkOutTime: propInfo?.checkOutTime,
+    };
+
+    function stubReservation(overrides: Partial<Reservation>): Reservation {
+      return {
+        id: `res_${Date.now().toString(36)}`,
+        propertyId: selectedPropertyId ?? "",
+        guestId: guestId ?? "",
+        roomId: null,
+        roomTypeId: selectedRoomTypeId ?? "",
+        checkInDate: checkInDate!,
+        checkOutDate: checkOutDate!,
+        nightCount: nights,
+        adults,
+        children,
+        status: "confirmed",
+        roomRate: 0,
+        totalRoomCharges: 0,
+        specialRequests: null,
+        source: "guest_portal",
+        createdBy: "",
+        checkedInAt: null,
+        checkedInBy: null,
+        checkedOutAt: null,
+        checkedOutBy: null,
+        cancelledAt: null,
+        cancelledBy: null,
+        cancelReason: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...overrides,
+      };
+    }
+
+    // Group booking: one page per site, each with its own QR + per-site totals.
+    if (groupItems && groupResult && groupItems.length > 1) {
+      const items = groupItems.map((it, i) =>
+        ({
+          reservation: stubReservation({
+            id: groupResult.reservationIds[i] ?? `res_${i}`,
+            adults: it.adults,
+            children: it.children,
+            totalRoomCharges: it.totalRoomCharges,
+            roomRate:
+              it.totalRoomCharges && nights ? Math.round(it.totalRoomCharges / nights) : 0,
+          }),
+          ...meta,
+          roomTypeName: it.roomTypeName || rtName || undefined,
+        }));
+      downloadBookingGroupPdf(items);
+      return;
+    }
+
+    // Solo booking.
+    const reservation = stubReservation({
+      id: bookingResult?.reservationId ?? `res_${Date.now().toString(36)}`,
+      nightCount: bookingResult?.nightCount ?? nights,
+      roomRate: bookingResult?.roomRate ?? 0,
+      totalRoomCharges: bookingResult?.totalRoomCharges ?? 0,
+    });
+    downloadBookingPdf({
+      reservation,
+      ...meta,
+      roomTypeName: rtName || undefined,
     });
   }
 
@@ -416,6 +474,51 @@ export function ConfirmationPage() {
             </div>
           </dl>
         </div>
+
+        {/* Group booking breakdown: one line per campsite. Only shown when
+            the guest booked > 1 site in the same transaction. */}
+        {groupItems && groupResult && groupItems.length > 1 && (
+          <div className="mb-8 rounded-lg border border-accent/30 bg-accent-soft/40 p-5 text-left">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-accent-dark">
+                Your {groupItems.length}-site group booking
+              </h2>
+              <span className="rounded-full bg-white/60 px-2 py-0.5 text-[10px] font-mono text-accent-dark">
+                #{groupResult.groupId.slice(-6).toUpperCase()}
+              </span>
+            </div>
+            <ul className="space-y-2 text-sm">
+              {groupItems.map((it, i) => (
+                <li
+                  key={groupResult.reservationIds[i] ?? i}
+                  className="flex flex-col gap-1 rounded-md bg-white/70 px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <div className="font-medium text-foreground">
+                      Site {i + 1}: {it.roomTypeName}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {it.adults} {it.adults === 1 ? "adult" : "adults"}
+                      {it.children > 0
+                        ? `, ${it.children} ${it.children === 1 ? "child" : "children"}`
+                        : ""}
+                      {" · "}
+                      <span className="font-mono">
+                        #{(groupResult.reservationIds[i] ?? "").slice(0, 8).toUpperCase()}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold text-foreground sm:text-right">
+                    {formatCents(it.totalRoomCharges)}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3 text-xs text-muted-foreground">
+              One payment covered all {groupItems.length} sites. Staff can check each site in independently by scanning that site's QR.
+            </p>
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">

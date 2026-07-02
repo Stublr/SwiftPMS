@@ -4,7 +4,7 @@ import { useUIStore } from "@/stores/ui.store";
 import { useBookingStore } from "@/stores/booking.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { checkAvailability, type AvailableRoomType } from "@/services/availability";
-import { cancelOwnReservation, createBooking } from "@/services/booking";
+import { cancelOwnReservation, createBooking, createBookingGroup } from "@/services/booking";
 import { initiatePeachCheckout } from "@/services/payment";
 import { writePendingToStorage } from "@/pages/payment-result";
 import { guestLogin, guestRegister } from "@/services/auth";
@@ -117,7 +117,10 @@ export function BookingPage() {
   }
 
   const setResult = useBookingStore((s) => s.setResult);
+  const setGroupResult = useBookingStore((s) => s.setGroupResult);
   const setPendingPayment = useBookingStore((s) => s.setPendingPayment);
+  const groupItems = useBookingStore((s) => s.groupItems);
+  const isGroup = (groupItems?.length ?? 0) > 1;
 
   async function handleConfirmBooking() {
     if (!guestId || !selectedRoomTypeId || !checkInDate || !checkOutDate) return;
@@ -125,68 +128,121 @@ export function BookingPage() {
     setError(null);
 
     // Two-stage flow:
-    //   (1) createGuestReservation — creates reservation + folio + holds room
-    //   (2) initiatePeachCheckout   — calls Plankton, gets redirect URL
-    // If (2) fails the reservation from (1) is orphaned and blocks inventory,
-    // so we must roll it back before surfacing the error.
-    let bookingResult: Awaited<ReturnType<typeof createBooking>> | null = null;
+    //   (1) createGuestReservation(Group) — creates N reservations + one folio
+    //   (2) initiatePeachCheckout        — calls Plankton, gets redirect URL
+    // If (2) fails, roll back so we don't leak held rooms.
+    let soloResult: Awaited<ReturnType<typeof createBooking>> | null = null;
+    let groupCreated: Awaited<ReturnType<typeof createBookingGroup>> | null = null;
     try {
-      bookingResult = await createBooking({
-        guestId,
-        roomTypeId: selectedRoomTypeId,
-        checkInDate,
-        checkOutDate,
-        adults,
-        children,
-        specialRequests: specialRequests.trim() || undefined,
-        propertyId: selectedPropertyId!,
-      });
-      setResult({
-        reservationId: bookingResult.id,
-        folioId: bookingResult.folioId,
-        nightCount: bookingResult.nightCount,
-        roomRate: bookingResult.roomRate,
-        totalRoomCharges: bookingResult.totalRoomCharges,
-      });
+      let reservationIdForPayment: string;
+      let folioIdForPayment: string;
+      let totalAmountCents: number;
+      let nightCountForSnap: number;
+      let roomRateForSnap: number;
+      // For the snapshot we only store the first reservation's id as the
+      // "primary" — the group's other reservations are fetched from the
+      // folio doc on the confirmation page.
+      if (isGroup) {
+        groupCreated = await createBookingGroup({
+          guestId,
+          propertyId: selectedPropertyId!,
+          checkInDate,
+          checkOutDate,
+          items: groupItems!.map((it) => ({
+            roomTypeId: it.roomTypeId,
+            adults: it.adults,
+            children: it.children,
+          })),
+          specialRequests: specialRequests.trim() || undefined,
+        });
+        setGroupResult(groupCreated);
+        reservationIdForPayment = groupCreated.reservationIds[0]!;
+        folioIdForPayment = groupCreated.folioId;
+        totalAmountCents = groupCreated.totalRoomCharges;
+        nightCountForSnap = groupCreated.nightCount;
+        roomRateForSnap = 0; // group folio has per-site rates, snapshot is a summary only
+      } else {
+        soloResult = await createBooking({
+          guestId,
+          roomTypeId: selectedRoomTypeId,
+          checkInDate,
+          checkOutDate,
+          adults,
+          children,
+          specialRequests: specialRequests.trim() || undefined,
+          propertyId: selectedPropertyId!,
+        });
+        setResult({
+          reservationId: soloResult.id,
+          folioId: soloResult.folioId,
+          nightCount: soloResult.nightCount,
+          roomRate: soloResult.roomRate,
+          totalRoomCharges: soloResult.totalRoomCharges,
+        });
+        reservationIdForPayment = soloResult.id;
+        folioIdForPayment = soloResult.folioId;
+        totalAmountCents = soloResult.totalRoomCharges;
+        nightCountForSnap = soloResult.nightCount;
+        roomRateForSnap = soloResult.roomRate;
+      }
 
-      // Kick off Peach hosted checkout via Plankton platform.
       const shopperResultUrl = `${window.location.origin}/?payment_return=1`;
       const { paymentIntentId, redirectUrl } = await initiatePeachCheckout({
         purpose: "guest_booking",
-        amount: bookingResult.totalRoomCharges,
+        amount: totalAmountCents,
         propertyId: selectedPropertyId!,
-        reservationId: bookingResult.id,
-        folioId: bookingResult.folioId,
+        reservationId: reservationIdForPayment,
+        folioId: folioIdForPayment,
         paymentType: "DB",
         shopperResultUrl,
       });
 
-      // Persist so the return page can find this intent after the redirect.
       const tid = useGuestAuthStore.getState().tenantId ?? "";
       writePendingToStorage({
         paymentIntentId,
         tenantId: tid,
         propertyId: selectedPropertyId!,
+        snapshot: {
+          checkInDate,
+          checkOutDate,
+          adults,
+          children,
+          selectedPropertyId: selectedPropertyId!,
+          selectedRoomTypeId: selectedRoomTypeId!,
+          reservationId: reservationIdForPayment,
+          nightCount: nightCountForSnap,
+          roomRate: roomRateForSnap,
+          totalRoomCharges: totalAmountCents,
+        },
+        groupSnapshot: isGroup && groupCreated
+          ? {
+              groupId: groupCreated.groupId,
+              reservationIds: groupCreated.reservationIds,
+              folioId: groupCreated.folioId,
+              items: groupItems!,
+            }
+          : undefined,
       });
       setPendingPayment({
         paymentIntentId,
-        amountCents: bookingResult.totalRoomCharges,
+        amountCents: totalAmountCents,
       });
 
-      // Send the user to Peach. They come back to shopperResultUrl.
       window.location.assign(redirectUrl);
     } catch (err) {
-      // Roll back the reservation if it was created but payment-init failed.
-      if (bookingResult) {
+      // Rollback: for a solo, cancel the one reservation. For a group, cancel
+      // every reservation in the group (each independently) so no held rooms
+      // linger.
+      const idsToCancel = isGroup && groupCreated
+        ? groupCreated.reservationIds
+        : soloResult
+          ? [soloResult.id]
+          : [];
+      for (const id of idsToCancel) {
         try {
-          await cancelOwnReservation(
-            bookingResult.id,
-            selectedPropertyId!,
-            "payment_init_failed",
-          );
+          await cancelOwnReservation(id, selectedPropertyId!, "payment_init_failed");
         } catch {
-          // If rollback fails the sweeper will release the hold after 30 min.
-          // Don't mask the original error with a rollback error.
+          // Sweeper will release the hold after 30 min if rollback fails.
         }
       }
       setError(

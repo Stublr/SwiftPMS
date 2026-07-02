@@ -143,10 +143,7 @@ export function WalkInPage() {
 
         <div className="mt-6 flex flex-col gap-2">
           <button
-            onClick={() => {
-              window.history.replaceState({}, "", `/folio?res=${success.reservationId}`);
-              navigate("/folio");
-            }}
+            onClick={() => navigate(`/folio?res=${success.reservationId}`)}
             className="rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
           >
             Open folio + take payment
@@ -178,7 +175,7 @@ export function WalkInPage() {
       </p>
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-4">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid min-w-0 grid-cols-2 gap-3">
           <LabelledInput
             label="First name *"
             value={firstName}
@@ -214,7 +211,7 @@ export function WalkInPage() {
                 value={checkIn}
                 min={todayIso()}
                 onChange={(e) => setCheckIn(e.target.value)}
-                className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+                className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
               />
             </div>
             <div>
@@ -224,7 +221,7 @@ export function WalkInPage() {
                 value={checkOut}
                 min={checkIn ? new Date(new Date(checkIn).getTime() + 86_400_000).toISOString().split("T")[0] : todayIso()}
                 onChange={(e) => setCheckOut(e.target.value)}
-                className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+                className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
               />
             </div>
             <div>
@@ -232,7 +229,7 @@ export function WalkInPage() {
               <select
                 value={adults}
                 onChange={(e) => setAdults(Number(e.target.value))}
-                className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+                className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
               >
                 {[1, 2, 3, 4, 5, 6].map((n) => (
                   <option key={n} value={n}>{n}</option>
@@ -244,7 +241,7 @@ export function WalkInPage() {
               <select
                 value={children}
                 onChange={(e) => setChildren(Number(e.target.value))}
-                className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+                className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
               >
                 {[0, 1, 2, 3, 4, 5].map((n) => (
                   <option key={n} value={n}>{n}</option>
@@ -259,7 +256,7 @@ export function WalkInPage() {
           <select
             value={roomTypeId}
             onChange={(e) => setRoomTypeId(e.target.value)}
-            className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+            className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
           >
             {roomTypes.map((t) => (
               <option key={t.id} value={t.id}>
@@ -315,15 +312,16 @@ function LabelledInput({
   autoFocus?: boolean;
 }) {
   return (
-    <div>
+    <div className="min-w-0">
       <label className="block text-xs font-medium">{label}</label>
+      {/* text-base (16px) prevents iOS Safari auto-zoom on input focus. */}
       <input
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoFocus={autoFocus}
-        className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
+        className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
       />
     </div>
   );

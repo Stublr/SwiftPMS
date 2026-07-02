@@ -1,4 +1,4 @@
-import { collection, getDocs, query, where, orderBy, limit } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where, orderBy, limit } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { db, functions } from "@/lib/firebase";
 import { usePropertyStore } from "@/stores/property.store";
@@ -7,6 +7,15 @@ import type { Reservation, CreateReservationRequest } from "@swiftpms/shared";
 function getPath() {
   const { tenantId, propertyId } = usePropertyStore.getState();
   return { tenantId: tenantId!, propertyId: propertyId! };
+}
+
+export async function getReservation(reservationId: string): Promise<Reservation | null> {
+  const { tenantId, propertyId } = getPath();
+  const snap = await getDoc(
+    doc(db, `tenants/${tenantId}/properties/${propertyId}/reservations/${reservationId}`),
+  );
+  if (!snap.exists()) return null;
+  return { id: snap.id, propertyId, ...snap.data() } as Reservation;
 }
 
 export async function getReservations(status?: string): Promise<Reservation[]> {

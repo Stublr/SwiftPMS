@@ -19,22 +19,37 @@ function initialPage(): string {
   return window.location.pathname || "/";
 }
 
+/** Strip query + hash so the switch(currentPage) in app.tsx matches. */
+function pathOnly(url: string): string {
+  return url.split("?")[0]!.split("#")[0]!;
+}
+
 export const useUIStore = create<UIState>()((set, get) => ({
   sidebarOpen: true,
   currentPage: initialPage(),
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
   setSidebarOpen: (sidebarOpen) => set({ sidebarOpen }),
-  navigate: (currentPage) => {
-    if (typeof window !== "undefined" && get().currentPage !== currentPage) {
-      try {
-        window.history.pushState({ swiftpms: true }, "", currentPage);
-      } catch {
-        // ignore; store still updates
+  navigate: (url) => {
+    const path = pathOnly(url);
+    if (typeof window !== "undefined") {
+      // pushState the FULL url (with any query/hash) so window.location.search
+      // reflects it. Deep-linked pages (mobile-folio, check-in) read from
+      // window.location.search directly.
+      const currentUrl = window.location.pathname + window.location.search + window.location.hash;
+      if (currentUrl !== url) {
+        try {
+          window.history.pushState({ swiftpms: true }, "", url);
+        } catch {
+          // ignore; store still updates
+        }
       }
     }
-    set({ currentPage });
+    // currentPage stays path-only so the app.tsx route switch keeps matching.
+    if (get().currentPage !== path) {
+      set({ currentPage: path });
+    }
   },
-  _syncFromHistory: (currentPage) => set({ currentPage }),
+  _syncFromHistory: (currentPage) => set({ currentPage: pathOnly(currentPage) }),
 }));
 
 if (typeof window !== "undefined") {

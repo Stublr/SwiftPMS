@@ -22,8 +22,7 @@ export function ScanPage() {
     qs.set("res", res);
     if (p) qs.set("p", p);
     if (t) qs.set("t", t);
-    window.history.replaceState({}, "", `/check-in?${qs.toString()}`);
-    navigate("/check-in");
+    navigate(`/check-in?${qs.toString()}`);
   }
 
   function handleScan(detected: IDetectedBarcode[]) {
@@ -77,7 +76,10 @@ export function ScanPage() {
         </button>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-border bg-black">
+      <div
+        className="relative mx-auto overflow-hidden rounded-xl border border-border bg-black"
+        style={{ width: "100%", aspectRatio: "1 / 1" }}
+      >
         <Scanner
           onScan={handleScan}
           onError={(err) => {
@@ -94,7 +96,19 @@ export function ScanPage() {
             torch: true,
             tracker: undefined,
           }}
-          styles={{ container: { width: "100%", paddingTop: "100%" } }}
+          styles={{
+            container: {
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+            },
+            video: {
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            },
+          }}
         />
       </div>
 

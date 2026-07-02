@@ -81,10 +81,7 @@ export function TodayPage() {
           current.map((r) => (
             <button
               key={r.id}
-              onClick={() => {
-                window.history.replaceState({}, "", `/folio?res=${r.id}`);
-                navigate("/folio");
-              }}
+              onClick={() => navigate(`/folio?res=${r.id}`)}
               className="w-full rounded-lg border border-border bg-white p-4 text-left shadow-sm hover:border-primary/30 hover:shadow-md"
             >
               <div className="flex items-baseline justify-between">

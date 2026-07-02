@@ -38,28 +38,31 @@ export function Header() {
   }
 
   return (
-    <header className="flex h-14 items-center justify-between border-b border-border bg-white px-4">
-      <div className="flex items-center gap-4">
+    <header
+      className="flex min-h-14 items-center justify-between gap-2 border-b border-border bg-white px-3"
+      style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
+    >
+      <div className="flex min-w-0 items-center gap-2">
         <button
           onClick={toggleSidebar}
-          className="rounded-md p-2 text-sm hover:bg-secondary"
+          className="rounded-md p-2 text-sm hover:bg-secondary md:inline hidden"
         >
           Menu
         </button>
         <ConnectivityIndicator />
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex min-w-0 items-center gap-2">
         {/* Property Switcher */}
-        <div className="relative">
+        <div className="relative min-w-0">
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
-            className="flex items-center gap-2 rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-secondary"
+            className="flex max-w-[55vw] items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-sm transition-colors hover:bg-secondary md:max-w-none"
           >
-            <span className="max-w-[200px] truncate font-medium">
+            <span className="truncate font-medium">
               {propertyName ?? "Select property"}
             </span>
             <svg
-              className={`h-4 w-4 text-muted-foreground transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+              className={`h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -105,15 +108,31 @@ export function Header() {
           )}
         </div>
 
-        <div className="text-sm text-muted-foreground">
+        {/* Desktop: full user badge + text logout. Mobile: compact icon button. */}
+        <div className="hidden text-sm text-muted-foreground md:block">
           {user ? `${user.fullName} (${user.role.replace("_", " ")})` : "Not logged in"}
         </div>
         {user && (
           <button
             onClick={handleLogout}
-            className="rounded-md px-3 py-1.5 text-sm text-red-600 hover:bg-red-50"
+            title="Log out"
+            aria-label="Log out"
+            className="rounded-md p-2 text-red-600 hover:bg-red-50 md:px-3 md:py-1.5"
           >
-            Logout
+            <span className="hidden md:inline text-sm">Logout</span>
+            <svg
+              className="h-5 w-5 md:hidden"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              />
+            </svg>
           </button>
         )}
       </div>

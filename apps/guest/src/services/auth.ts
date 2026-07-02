@@ -19,8 +19,11 @@ export async function guestLogin(
   const tokenResult = await credential.user.getIdTokenResult();
   const claims = tokenResult.claims;
 
-  // Verify this is a guest account
-  if (claims.role !== "guest") {
+  // Allow guest accounts, plus super_admin (so admins can test the booking
+  // flow / book on behalf of themselves without needing a separate account).
+  // Any other staff role is rejected so front-desk staff don't accidentally
+  // conflate their staff sessions with guest bookings.
+  if (claims.role !== "guest" && claims.role !== "super_admin") {
     await signOut(auth);
     throw new Error("This account is not a guest account. Please use the staff portal.");
   }
@@ -85,7 +88,7 @@ export function initGuestAuthListener(): () => void {
     if (user) {
       const tokenResult = await user.getIdTokenResult();
       const claims = tokenResult.claims;
-      if (claims.role !== "guest") {
+      if (claims.role !== "guest" && claims.role !== "super_admin") {
         useGuestAuthStore.getState().clearAuth();
         return;
       }

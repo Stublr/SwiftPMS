@@ -1,4 +1,4 @@
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { useEffect, useState } from "react";
 
@@ -19,12 +19,21 @@ interface CheckInTarget {
   tenantId: string;
 }
 
-function readQueryParams(): CheckInTarget | null {
+/**
+ * Read check-in params from the URL. Only the reservation id (`res`) is
+ * required — property (`p`) and tenant (`t`) are optional and fall back to
+ * the currently-selected property + logged-in user's tenant. This lets the
+ * manual-entry fallback in scan.tsx and simple ID-only QR codes work.
+ */
+function readQueryParams(
+  fallbackTenantId: string | null,
+  fallbackPropertyId: string | null,
+): CheckInTarget | null {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
   const res = params.get("res");
-  const p = params.get("p");
-  const t = params.get("t");
+  const p = params.get("p") ?? fallbackPropertyId;
+  const t = params.get("t") ?? fallbackTenantId;
   if (!res || !p || !t) return null;
   return { reservationId: res, propertyId: p, tenantId: t };
 }
@@ -51,12 +60,23 @@ export function CheckInPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  // Group booking siblings (empty for solo bookings).
+  const [groupSiblings, setGroupSiblings] = useState<Reservation[]>([]);
+  const [bulkCheckIn, setBulkCheckIn] = useState<{
+    running: boolean;
+    done: number;
+    total: number;
+    failures: string[];
+  } | null>(null);
 
   useEffect(() => {
-    const t = readQueryParams();
+    const t = readQueryParams(
+      user?.tenantId ?? null,
+      propertyStore.propertyId ?? null,
+    );
     setTarget(t);
     if (!t) {
-      setError("This URL is missing reservation parameters. Re-scan the QR code.");
+      setError("That QR code didn't include a booking. Scan again, or enter the booking ID manually below.");
       setLoading(false);
       return;
     }
@@ -92,7 +112,7 @@ export function CheckInPage() {
       );
       const snap = await getDoc(resRef);
       if (!snap.exists()) {
-        setError(`Reservation ${t.reservationId} not found.`);
+        setError("No booking found for that QR. It may have been cancelled, or belong to a different property. Check the guest's confirmation email.");
         return;
       }
       const r = { id: snap.id, ...snap.data() } as Reservation;
@@ -105,8 +125,37 @@ export function CheckInPage() {
       if (guestSnap.exists()) {
         setGuest(guestSnap.data() as GuestData);
       }
+
+      // Group booking: fetch sibling reservations sharing the same groupId.
+      // Firestore auto-indexes single-field equality so no composite index needed.
+      if (r.groupId) {
+        try {
+          const q = query(
+            collection(
+              db,
+              `tenants/${t.tenantId}/properties/${t.propertyId}/reservations`,
+            ),
+            where("groupId", "==", r.groupId),
+          );
+          const groupSnap = await getDocs(q);
+          const sibs = groupSnap.docs
+            .map((d) => ({ id: d.id, ...d.data() }) as Reservation)
+            // Sort so the primary reservation shows first, others in id order.
+            .sort((a, b) => (a.id === r.id ? -1 : b.id === r.id ? 1 : a.id.localeCompare(b.id)));
+          setGroupSiblings(sibs);
+        } catch (groupErr) {
+          console.warn("Failed to load group siblings", groupErr);
+          setGroupSiblings([]);
+        }
+      } else {
+        setGroupSiblings([]);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load reservation");
+      setError(
+        err instanceof Error
+          ? `Couldn't load that booking (${err.message}). Check your connection and try again.`
+          : "Couldn't load that booking. Check your connection and try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -129,6 +178,37 @@ export function CheckInPage() {
     } finally {
       setCheckingIn(false);
     }
+  }
+
+  /**
+   * Check in every "confirmed" sibling in the group booking. Already-checked-in
+   * sites are skipped. Each call is independent — a failure on one doesn't
+   * block the rest, but we surface the count of failures at the end.
+   */
+  async function handleCheckInAllGroup() {
+    if (!target || groupSiblings.length === 0) return;
+    const toCheckIn = groupSiblings.filter(
+      (r) => r.status === ReservationStatus.CONFIRMED,
+    );
+    if (toCheckIn.length === 0) return;
+    setBulkCheckIn({ running: true, done: 0, total: toCheckIn.length, failures: [] });
+    setError(null);
+    const fn = httpsCallable(functions, "checkIn");
+    let done = 0;
+    const failures: string[] = [];
+    for (const res of toCheckIn) {
+      try {
+        await fn({ reservationId: res.id, propertyId: res.propertyId });
+      } catch (err) {
+        failures.push(
+          `${res.id.slice(0, 8).toUpperCase()}: ${err instanceof Error ? err.message : "failed"}`,
+        );
+      }
+      done += 1;
+      setBulkCheckIn({ running: true, done, total: toCheckIn.length, failures });
+    }
+    setBulkCheckIn({ running: false, done, total: toCheckIn.length, failures });
+    await loadReservation(target);
   }
 
   // Validity calculation
@@ -290,6 +370,83 @@ export function CheckInPage() {
               </div>
             )}
 
+            {/* Group booking panel — only visible when this reservation is
+                part of a multi-site group. Lists sibling sites + offers a
+                one-click check-in for the whole group. */}
+            {groupSiblings.length > 1 && (
+              <div className="rounded-lg border border-primary/30 bg-primary/5 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <div className="text-sm font-semibold text-primary">
+                    Part of a {groupSiblings.length}-site group booking
+                  </div>
+                  <span className="rounded-full bg-white/70 px-2 py-0.5 font-mono text-[10px] text-primary">
+                    #{(reservation.groupId ?? "").slice(-6).toUpperCase()}
+                  </span>
+                </div>
+                <ul className="mb-3 space-y-1.5 text-xs">
+                  {groupSiblings.map((sib, i) => (
+                    <li
+                      key={sib.id}
+                      className={`flex items-center justify-between rounded-md px-2.5 py-1.5 ${
+                        sib.id === reservation.id
+                          ? "bg-primary/10 font-semibold text-primary"
+                          : "bg-white text-foreground"
+                      }`}
+                    >
+                      <span>
+                        Site {i + 1}
+                        <span className="ml-2 font-mono text-[10px] text-muted-foreground">
+                          #{sib.id.slice(0, 8).toUpperCase()}
+                        </span>
+                        <span className="ml-2 text-muted-foreground">
+                          {sib.adults} adult{sib.adults !== 1 ? "s" : ""}
+                          {sib.children > 0
+                            ? `, ${sib.children} kid${sib.children !== 1 ? "s" : ""}`
+                            : ""}
+                        </span>
+                      </span>
+                      <span className="capitalize text-muted-foreground">
+                        {sib.status.replace("_", " ")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {groupSiblings.some((s) => s.status === ReservationStatus.CONFIRMED) && (
+                  <button
+                    onClick={handleCheckInAllGroup}
+                    disabled={bulkCheckIn?.running}
+                    className="w-full rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                  >
+                    {bulkCheckIn?.running
+                      ? `Checking in… ${bulkCheckIn.done}/${bulkCheckIn.total}`
+                      : `Check In All ${
+                          groupSiblings.filter((s) => s.status === ReservationStatus.CONFIRMED).length
+                        } Ready Sites`}
+                  </button>
+                )}
+                {bulkCheckIn && !bulkCheckIn.running && bulkCheckIn.done > 0 && (
+                  <div className="mt-2 text-xs">
+                    {bulkCheckIn.failures.length === 0 ? (
+                      <span className="text-green-700">
+                        ✓ Checked in {bulkCheckIn.done} site
+                        {bulkCheckIn.done !== 1 ? "s" : ""}.
+                      </span>
+                    ) : (
+                      <div className="rounded bg-red-50 p-2 text-red-700">
+                        {bulkCheckIn.done - bulkCheckIn.failures.length} succeeded,{" "}
+                        {bulkCheckIn.failures.length} failed:
+                        <ul className="mt-1 list-disc pl-4">
+                          {bulkCheckIn.failures.map((f) => (
+                            <li key={f}>{f}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Actions */}
             <div className="flex gap-2 pt-2">
               {validity?.kind === "ready" && (
@@ -298,7 +455,11 @@ export function CheckInPage() {
                   disabled={checkingIn}
                   className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                 >
-                  {checkingIn ? "Checking in…" : "Check In Guest"}
+                  {checkingIn
+                    ? "Checking in…"
+                    : groupSiblings.length > 1
+                      ? "Check In This Site Only"
+                      : "Check In Guest"}
                 </button>
               )}
               <button

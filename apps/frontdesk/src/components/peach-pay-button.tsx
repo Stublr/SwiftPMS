@@ -220,6 +220,17 @@ export function PeachPayButton({
       }
       poll();
     } catch (err) {
+      // Close the orphaned popup if initiatePeachCheckout failed before we
+      // navigated it away from about:blank. Without this it lingers with
+      // "Preparing secure payment…" forever.
+      if (popupRef.current && !popupRef.current.closed) {
+        try {
+          popupRef.current.close();
+        } catch {
+          // ignore
+        }
+      }
+      popupRef.current = null;
       setError(
         err instanceof Error ? err.message : "Failed to start payment",
       );

@@ -26,7 +26,20 @@ export interface FolioPayment {
 export interface Folio {
   id: string;
   propertyId: string;
+  /**
+   * Primary reservation this folio was created for. For group bookings this
+   * is the first reservation in the group — see `reservationIds` for the
+   * full set. Kept for backward compatibility with legacy single-site folios.
+   */
   reservationId: string;
+  /**
+   * All reservations covered by this folio. Present on group bookings
+   * (createGuestReservationGroup) and undefined on legacy single-site
+   * folios (which are conceptually [reservationId]).
+   */
+  reservationIds?: string[];
+  /** Optional group id shared by all reservations in a group booking. */
+  groupId?: string;
   guestId: string;
   charges: FolioCharge[];
   payments: FolioPayment[];

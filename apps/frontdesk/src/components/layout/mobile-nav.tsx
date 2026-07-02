@@ -12,7 +12,10 @@ export function MobileNav() {
   const navigate = useUIStore((s) => s.navigate);
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white shadow-[0_-4px_8px_-2px_rgba(0,0,0,0.08)] md:hidden">
+    <nav
+      className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white shadow-[0_-4px_8px_-2px_rgba(0,0,0,0.08)] md:hidden"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+    >
       <ul className="grid grid-cols-4">
         {TABS.map((tab) => {
           const active =

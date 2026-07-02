@@ -3,6 +3,10 @@ import type { ReservationStatus } from "../constants/reservation-status.js";
 export interface Reservation {
   id: string;
   propertyId: string;
+  /** Shared id for reservations booked together as a group. Undefined on solo bookings. */
+  groupId?: string;
+  /** Folio this reservation is billed against. For groups, N reservations share one folio. */
+  folioId?: string;
   guestId: string;
   roomId: string | null;
   roomTypeId: string;

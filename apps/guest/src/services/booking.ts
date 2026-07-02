@@ -52,6 +52,37 @@ export async function createBooking(data: {
   };
 }
 
+/**
+ * Group booking: create N reservations (one per campsite) tied to a single
+ * folio. All items share dates + specialRequests; each has its own guest
+ * count so tiered per-person pricing calculates correctly.
+ */
+export async function createBookingGroup(data: {
+  guestId: string;
+  propertyId: string;
+  checkInDate: string;
+  checkOutDate: string;
+  items: { roomTypeId: string; adults: number; children: number }[];
+  specialRequests?: string;
+  clientRequestId?: string;
+}): Promise<{
+  groupId: string;
+  reservationIds: string[];
+  folioId: string;
+  nightCount: number;
+  totalRoomCharges: number;
+}> {
+  const fn = httpsCallable(functions, "createGuestReservationGroup");
+  const result = await fn(data);
+  return result.data as {
+    groupId: string;
+    reservationIds: string[];
+    folioId: string;
+    nightCount: number;
+    totalRoomCharges: number;
+  };
+}
+
 export async function getMyBookings(): Promise<Reservation[]> {
   const { guestId, tenantId } = useGuestAuthStore.getState();
   if (!guestId || !tenantId) return [];

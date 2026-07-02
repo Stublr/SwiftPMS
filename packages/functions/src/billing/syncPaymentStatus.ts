@@ -258,32 +258,52 @@ export const syncPaymentStatus = onCall(
         }
 
         const folioId = freshIntent.folioId as string | null;
-        const reservationId = freshIntent.reservationId as string | null;
+        const legacyReservationId = freshIntent.reservationId as string | null;
         const paymentType = freshIntent.paymentType as string;
         const amount = freshIntent.amount as number;
 
-        // 2) Pre-fetch folio + reservation + room BEFORE any writes.
+        // 2) Pre-fetch folio + ALL reservations + their rooms BEFORE any
+        //    writes. For group bookings the folio's `reservationIds` covers
+        //    every campsite; for legacy solo bookings we fall back to the
+        //    intent's single reservationId.
         let folioSnap: FirebaseFirestore.DocumentSnapshot | null = null;
-        let resSnap: FirebaseFirestore.DocumentSnapshot | null = null;
-        let roomSnap: FirebaseFirestore.DocumentSnapshot | null = null;
         let fRef: FirebaseFirestore.DocumentReference | null = null;
-        let resR: FirebaseFirestore.DocumentReference | null = null;
-        let rRef: FirebaseFirestore.DocumentReference | null = null;
+        // Per-reservation prefetch, one entry per site in the group.
+        const resPrefetch: {
+          resRef: FirebaseFirestore.DocumentReference;
+          resSnap: FirebaseFirestore.DocumentSnapshot;
+          roomRef: FirebaseFirestore.DocumentReference | null;
+          roomSnap: FirebaseFirestore.DocumentSnapshot | null;
+        }[] = [];
 
         if (isSuccess && paymentType === "DB" && folioId) {
           fRef = folioRef(tenantId, propertyId, folioId);
           folioSnap = await tx.get(fRef);
 
-          if (reservationId) {
-            resR = reservationRef(tenantId, propertyId, reservationId);
-            resSnap = await tx.get(resR);
-            const rid = resSnap.exists
+          // Prefer folio.reservationIds (group) over intent.reservationId (solo).
+          const folioReservationIds = folioSnap.exists
+            ? ((folioSnap.data()!.reservationIds as string[] | undefined) ?? null)
+            : null;
+          const reservationIdsToLoad =
+            folioReservationIds && folioReservationIds.length > 0
+              ? folioReservationIds
+              : legacyReservationId
+                ? [legacyReservationId]
+                : [];
+
+          for (const rid of reservationIdsToLoad) {
+            const resR = reservationRef(tenantId, propertyId, rid);
+            const resSnap = await tx.get(resR);
+            let roomR: FirebaseFirestore.DocumentReference | null = null;
+            let roomSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+            const roomIdOnRes = resSnap.exists
               ? (resSnap.data()!.roomId as string | null)
               : null;
-            if (rid) {
-              rRef = roomRef(tenantId, propertyId, rid);
-              roomSnap = await tx.get(rRef);
+            if (roomIdOnRes) {
+              roomR = roomRef(tenantId, propertyId, roomIdOnRes);
+              roomSnap = await tx.get(roomR);
             }
+            resPrefetch.push({ resRef: resR, resSnap, roomRef: roomR, roomSnap });
           }
         }
 
@@ -331,24 +351,29 @@ export const syncPaymentStatus = onCall(
           updatedAt: FieldValue.serverTimestamp(),
         });
 
-        // If folio settled and reservation has a held room, promote it.
-        if (newFolioStatus === "settled" && resR && resSnap?.exists) {
-          if (
-            rRef &&
-            roomSnap?.exists &&
-            roomSnap.data()?.status === "held"
-          ) {
-            tx.update(rRef, {
-              status: "reserved",
+        // On settle: promote every held room in the group to "reserved" and
+        // clear the hold on each reservation. Loop over all sites (group
+        // booking) or the single site (legacy solo booking).
+        if (newFolioStatus === "settled") {
+          for (const pf of resPrefetch) {
+            if (!pf.resSnap.exists) continue;
+            if (
+              pf.roomRef &&
+              pf.roomSnap?.exists &&
+              pf.roomSnap.data()?.status === "held"
+            ) {
+              tx.update(pf.roomRef, {
+                status: "reserved",
+                holdExpiresAt: null,
+                currentReservationId: pf.resSnap.id,
+                updatedAt: FieldValue.serverTimestamp(),
+              });
+            }
+            tx.update(pf.resRef, {
               holdExpiresAt: null,
-              currentReservationId: reservationId,
               updatedAt: FieldValue.serverTimestamp(),
             });
           }
-          tx.update(resR, {
-            holdExpiresAt: null,
-            updatedAt: FieldValue.serverTimestamp(),
-          });
         }
         didApply = true;
       });
@@ -404,35 +429,111 @@ export const syncPaymentStatus = onCall(
  * Load reservation + guest + property + room type for a settled intent and
  * send the booking-confirmation email. Best-effort; errors are logged but
  * do not fail the sync call.
+ *
+ * Group bookings: sends ONE email using the primary reservation's context,
+ * with the site breakdown encoded into `specialRequests` (the SendGrid
+ * template renders that field verbatim). Longer-term, the template should
+ * grow a dedicated `groupSites` block, but that needs Aidan to update it.
  */
 async function sendConfirmationEmailForIntent(
   tenantId: string,
   propertyId: string,
   intent: FirebaseFirestore.DocumentData,
 ): Promise<void> {
-  const reservationId = intent.reservationId as string | null;
-  if (!reservationId) return;
+  const primaryReservationId = intent.reservationId as string | null;
+  const folioId = intent.folioId as string | null;
+  if (!primaryReservationId) return;
 
-  const resSnap = await reservationRef(tenantId, propertyId, reservationId).get();
-  if (!resSnap.exists) return;
-  const res = resSnap.data()!;
+  // If this is a group booking, load the folio to find all sibling reservations.
+  let reservationIdsToLoad: string[] = [primaryReservationId];
+  if (folioId) {
+    try {
+      const folioSnap = await folioRef(tenantId, propertyId, folioId).get();
+      const folioReservationIds =
+        (folioSnap.data()?.reservationIds as string[] | undefined) ?? null;
+      if (folioReservationIds && folioReservationIds.length > 1) {
+        reservationIdsToLoad = folioReservationIds;
+      }
+    } catch (folioErr) {
+      console.warn("[sync] Could not load folio for email; falling back to primary", folioErr);
+    }
+  }
 
-  const guestId = res.guestId as string | null;
-  const roomTypeId = res.roomTypeId as string | null;
+  const resSnaps = await Promise.all(
+    reservationIdsToLoad.map((id) => reservationRef(tenantId, propertyId, id).get()),
+  );
+  type LoadedRes = { id: string } & Record<string, unknown>;
+  const reservations: LoadedRes[] = resSnaps
+    .filter((s) => s.exists)
+    .map((s) => ({ id: s.id, ...(s.data() as FirebaseFirestore.DocumentData) }) as LoadedRes);
+  if (reservations.length === 0) return;
+
+  // Primary = the one the intent points to (fall back to first if missing).
+  const primary =
+    reservations.find((r) => r.id === primaryReservationId) ?? reservations[0]!;
+
+  const guestId = primary.guestId as string | null;
+  const roomTypeId = primary.roomTypeId as string | null;
   if (!guestId || !roomTypeId) return;
 
-  const [guestSnap, propSnap, rtSnap] = await Promise.all([
+  // Collect distinct room type ids across the group (usually just one but
+  // don't assume — mixed groups are allowed by the schema).
+  const roomTypeIds = Array.from(
+    new Set(reservations.map((r) => r.roomTypeId as string).filter(Boolean)),
+  );
+
+  const [guestSnap, propSnap, rtSnaps] = await Promise.all([
     guestRef(tenantId, guestId).get(),
     propertyRef(tenantId, propertyId).get(),
-    roomTypeRef(tenantId, roomTypeId).get(),
+    Promise.all(roomTypeIds.map((id) => roomTypeRef(tenantId, id).get())),
   ]);
   const guest = guestSnap.data();
   const prop = propSnap.data();
-  const rt = rtSnap.data();
+  const roomTypeById = new Map<string, string>();
+  for (const s of rtSnaps) {
+    if (s.exists) roomTypeById.set(s.id, (s.data()!.name as string) ?? "Room");
+  }
   const to = guest?.email as string | undefined;
   if (!to) {
     console.log("[sync] No guest email — skipping confirmation");
     return;
+  }
+
+  const isGroup = reservations.length > 1;
+  const totalAcrossGroup = reservations.reduce(
+    (sum, r) => sum + ((r.totalRoomCharges as number) ?? 0),
+    0,
+  );
+  const totalAdults = reservations.reduce(
+    (sum, r) => sum + ((r.adults as number) ?? 0),
+    0,
+  );
+  const totalChildren = reservations.reduce(
+    (sum, r) => sum + ((r.children as number) ?? 0),
+    0,
+  );
+
+  // Compose the roomTypeName + specialRequests for group bookings so the
+  // existing template renders the group breakdown without needing template
+  // changes.
+  let roomTypeNameOut: string;
+  let specialRequestsOut: string | null;
+  if (isGroup) {
+    roomTypeNameOut = `${reservations.length}-site group booking`;
+    const lines = reservations.map((r, i) => {
+      const rtName = roomTypeById.get(r.roomTypeId as string) ?? "Room";
+      const a = (r.adults as number) ?? 0;
+      const c = (r.children as number) ?? 0;
+      const guestsStr = `${a} adult${a !== 1 ? "s" : ""}${c > 0 ? `, ${c} child${c !== 1 ? "ren" : ""}` : ""}`;
+      const refShort = (r.id as string).slice(0, 8).toUpperCase();
+      return `Site ${i + 1}: ${rtName} — ${guestsStr} — Ref #${refShort} — ${formatCents((r.totalRoomCharges as number) ?? 0)}`;
+    });
+    const existing = (primary.specialRequests as string | null) ?? null;
+    specialRequestsOut = `Group booking — ${reservations.length} sites\n${lines.join("\n")}${existing ? `\n\nSpecial requests: ${existing}` : ""}`;
+  } else {
+    roomTypeNameOut =
+      roomTypeById.get(primary.roomTypeId as string) ?? "Room";
+    specialRequestsOut = (primary.specialRequests as string | null) ?? null;
   }
 
   await sendBookingConfirmation({
@@ -442,17 +543,17 @@ async function sendConfirmationEmailForIntent(
     propertyName: (prop?.name as string) ?? "Our Lodge",
     propertyEmail: (prop?.email as string) ?? undefined,
     propertyPhone: (prop?.phone as string) ?? undefined,
-    roomTypeName: (rt?.name as string) ?? "Room",
+    roomTypeName: roomTypeNameOut,
     roomName: null,
-    checkInDate: res.checkInDate as string,
-    checkOutDate: res.checkOutDate as string,
-    nightCount: res.nightCount as number,
-    adults: res.adults as number,
-    children: (res.children as number | undefined) ?? 0,
-    totalAmount: formatCents(res.totalRoomCharges as number),
-    ratePerNight: formatCents(res.roomRate as number),
-    reservationId,
-    specialRequests: (res.specialRequests as string | null) ?? null,
+    checkInDate: primary.checkInDate as string,
+    checkOutDate: primary.checkOutDate as string,
+    nightCount: primary.nightCount as number,
+    adults: isGroup ? totalAdults : (primary.adults as number),
+    children: isGroup ? totalChildren : ((primary.children as number | undefined) ?? 0),
+    totalAmount: formatCents(isGroup ? totalAcrossGroup : (primary.totalRoomCharges as number)),
+    ratePerNight: isGroup ? undefined : formatCents(primary.roomRate as number),
+    reservationId: primary.id,
+    specialRequests: specialRequestsOut,
     checkInTime: (prop?.checkInTime as string) ?? "14:00",
     checkOutTime: (prop?.checkOutTime as string) ?? "11:00",
   });

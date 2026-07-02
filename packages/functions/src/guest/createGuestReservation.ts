@@ -19,7 +19,10 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
 
     const tenantId = request.auth.token.tenantId as string;
     const role = request.auth.token.role as string;
-    if (role !== "guest") throw preconditionFailed("Only guest accounts can use this endpoint");
+    // Allow guests, plus super_admin (so admins can self-book for testing).
+    if (role !== "guest" && role !== "super_admin") {
+      throw preconditionFailed("Only guest accounts can use this endpoint");
+    }
 
     const propertyId = request.data.propertyId as string;
     if (!propertyId) throw preconditionFailed("propertyId is required");
