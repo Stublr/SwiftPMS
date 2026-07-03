@@ -22,7 +22,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@swiftpms/shared": "workspace:*",
+    "@swiftpms/shared": "file:./swiftpms-shared-0.0.0.tgz",
     "@types/qrcode": "^1.5.6",
     "bcryptjs": "^2.4.3",
     "firebase-admin": "^13.0.0",
@@ -32,7 +32,6 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^4.0.0",
-    "@swiftpms/tsconfig": "workspace:*",
     "@types/bcryptjs": "^2.4.6",
     "eslint": "^9.0.0",
     "firebase-functions-test": "^3.4.0",

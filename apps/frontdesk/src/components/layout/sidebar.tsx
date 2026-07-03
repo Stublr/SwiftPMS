@@ -4,11 +4,13 @@ const mainNavItems = [
   { label: "Dashboard", path: "/", icon: "D" },
   { label: "Room Board", path: "/rooms", icon: "R" },
   { label: "Reservations", path: "/reservations", icon: "B" },
+  { label: "Import Booking", path: "/legacy-booking", icon: "I" },
   { label: "Guests", path: "/guests", icon: "G" },
   { label: "Reports", path: "/reports", icon: "P" },
 ];
 
 const adminNavItems = [
+  { label: "Cash-up", path: "/cashup", icon: "$" },
   { label: "Properties", path: "/admin/properties", icon: "P" },
   { label: "Room Setup", path: "/admin/rooms", icon: "S" },
   { label: "Staff", path: "/admin/users", icon: "U" },

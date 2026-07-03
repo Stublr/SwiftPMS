@@ -19,14 +19,34 @@ export async function getFolioByReservation(reservationId: string): Promise<Foli
   return { id: d.id, propertyId, ...d.data() } as Folio;
 }
 
-export async function addCharge(data: Omit<AddChargeRequest, "folioId"> & { folioId: string }): Promise<void> {
-  const { propertyId } = getPath();
-  const fn = httpsCallable(functions, "addCharge");
-  await fn({ ...data, propertyId });
+/** Generate a client-side idempotency token. Prevents concurrent double-click from double-writing. */
+function genClientRequestId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export async function processPayment(data: Omit<ProcessPaymentRequest, "folioId"> & { folioId: string }): Promise<void> {
+export async function addCharge(
+  data: Omit<AddChargeRequest, "folioId"> & { folioId: string; clientRequestId?: string },
+): Promise<void> {
+  const { propertyId } = getPath();
+  const fn = httpsCallable(functions, "addCharge");
+  await fn({
+    ...data,
+    propertyId,
+    clientRequestId: data.clientRequestId ?? genClientRequestId("chg"),
+  });
+}
+
+export async function processPayment(
+  data: Omit<ProcessPaymentRequest, "folioId"> & { folioId: string; clientRequestId?: string },
+): Promise<void> {
   const { propertyId } = getPath();
   const fn = httpsCallable(functions, "processPayment");
-  await fn({ ...data, propertyId });
+  // Client-generated idempotency key. Server dedupes on this — a double-click
+  // (accidental, network-retry, browser stall) with the same key becomes a
+  // no-op instead of a second payment row.
+  await fn({
+    ...data,
+    propertyId,
+    clientRequestId: data.clientRequestId ?? genClientRequestId("pmt"),
+  });
 }

@@ -10,6 +10,7 @@ import { createGuest } from "@/services/guests";
 import { createReservation } from "@/services/reservations";
 import { getRoomTypes } from "@/services/rooms";
 import { useUIStore } from "@/stores/ui.store";
+import { PeachPayQrButton } from "@/components/peach-pay-qr-button";
 
 function todayIso(): string {
   return new Date().toISOString().split("T")[0]!;
@@ -42,6 +43,7 @@ export function WalkInPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
     reservationId: string;
+    folioId: string;
   } | null>(null);
 
   useEffect(() => {
@@ -101,7 +103,7 @@ export function WalkInPage() {
         adults,
         children,
       });
-      setSuccess({ reservationId: reservation.id });
+      setSuccess({ reservationId: reservation.id, folioId: reservation.folioId });
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Booking failed",
@@ -142,11 +144,26 @@ export function WalkInPage() {
         </p>
 
         <div className="mt-6 flex flex-col gap-2">
+          {/* Primary path: show a QR the guest scans on their own phone to
+              pay via Peach hosted checkout. Auto-redirects to the folio
+              once payment settles. */}
+          <PeachPayQrButton
+            label={`Take Card Payment — ${formatCents(totalCharge)}`}
+            amountCents={totalCharge}
+            purpose="folio_settlement"
+            paymentType="DB"
+            reservationId={success.reservationId}
+            folioId={success.folioId}
+            className="rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            onSuccess={() =>
+              navigate(`/folio?res=${success.reservationId}`)
+            }
+          />
           <button
             onClick={() => navigate(`/folio?res=${success.reservationId}`)}
-            className="rounded-lg bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground hover:bg-primary/90"
+            className="rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-secondary"
           >
-            Open folio + take payment
+            Open folio instead
           </button>
           <button
             onClick={() => {

@@ -65,6 +65,15 @@
       ]
     },
     {
+      "//": "Payment-attempt history on the folio page — orders every intent for a reservation newest-first.",
+      "collectionGroup": "paymentIntents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "reservationId", "order": "ASCENDING" },
+        { "fieldPath": "initiatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "paymentIntents",
       "queryScope": "COLLECTION",
       "fields": [
@@ -73,5 +82,24 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "//": "Collection-group single-field index for the sweepPendingPayments scheduled function. Without this, `collectionGroup('paymentIntents').where('status','==','redirected')` errors with FAILED_PRECONDITION, silently killing the safety-net that catches unfinished payments. This is the root cause of the Vincent Rudman incident on 2026-07-03.",
+      "collectionGroup": "paymentIntents",
+      "fieldPath": "status",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    },
+    {
+      "//": "Collection-group index on planktonPaymentId — powers the cross-device confirmation fallback in syncPaymentStatus. When a guest returns to /confirmation on a device without localStorage, the client only has the paymentId from the URL. Server resolves the intent by field lookup across all properties in the tenant.",
+      "collectionGroup": "paymentIntents",
+      "fieldPath": "planktonPaymentId",
+      "indexes": [
+        { "order": "ASCENDING", "queryScope": "COLLECTION" },
+        { "order": "ASCENDING", "queryScope": "COLLECTION_GROUP" }
+      ]
+    }
+  ]
 }

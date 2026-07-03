@@ -109,6 +109,24 @@ export function paymentIntentRef(
   );
 }
 
+// --- Shifts (under property) — end-of-shift cash-up records ---
+
+export function shiftsRef(tenantId: string, propertyId: string) {
+  return db.collection(
+    `tenants/${tenantId}/properties/${propertyId}/shifts`,
+  );
+}
+
+export function shiftRef(
+  tenantId: string,
+  propertyId: string,
+  shiftId: string,
+) {
+  return db.doc(
+    `tenants/${tenantId}/properties/${propertyId}/shifts/${shiftId}`,
+  );
+}
+
 // --- Audit Log ---
 
 export function auditLogRef(tenantId: string) {

@@ -8,8 +8,10 @@ import { queryClient } from "@/lib/query-client";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminRoomsPage } from "@/pages/admin/rooms";
 import { UsersPage } from "@/pages/admin/users";
+import { CashupPage } from "@/pages/cashup";
 import { CheckInPage } from "@/pages/check-in";
 import { DashboardPage } from "@/pages/dashboard";
+import { LegacyBookingPage } from "@/pages/legacy-booking";
 import { GuestsPage } from "@/pages/guests";
 import { LoginPage } from "@/pages/login";
 import { PropertySelectPage } from "@/pages/property-select";
@@ -43,6 +45,10 @@ function PageRouter() {
       return <AdminRoomsPage />;
     case "/admin/users":
       return <UsersPage />;
+    case "/cashup":
+      return <CashupPage />;
+    case "/legacy-booking":
+      return <LegacyBookingPage />;
     case "/check-in":
       return <CheckInPage />;
     case "/scan":
@@ -113,7 +119,7 @@ export function App() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const path = window.location.pathname;
-    const known = ["/check-in", "/scan", "/walk-in", "/today", "/folio"];
+    const known = ["/check-in", "/scan", "/walk-in", "/today", "/folio", "/cashup", "/legacy-booking"];
     if (known.includes(path)) {
       navigate(path);
     }

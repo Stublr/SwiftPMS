@@ -1,9 +1,18 @@
 import { httpsCallable } from "firebase/functions";
-import { doc, onSnapshot } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  onSnapshot,
+  orderBy,
+  query,
+  where,
+} from "firebase/firestore";
 
 import { type PaymentIntent } from "@swiftpms/shared";
 
 import { db, functions } from "@/lib/firebase";
+import { usePropertyStore } from "@/stores/property.store";
 
 export interface InitiatePeachCheckoutInput {
   purpose: "guest_booking" | "folio_settlement" | "card_on_arrival_preauth";
@@ -61,6 +70,31 @@ export async function syncPaymentStatus(
   );
   const result = await fn(input);
   return result.data;
+}
+
+/**
+ * Every payment attempt (successful, failed, in-flight) for a reservation.
+ * Feeds the "Payment attempts" section on mobile-folio so cashiers can see
+ * exactly what happened when a guest says "I paid but it says I owe R720"
+ * — the intent history shows every attempt with its terminal status +
+ * failure reason from Peach (via Plankton).
+ */
+export async function getPaymentIntentsForReservation(
+  reservationId: string,
+): Promise<PaymentIntent[]> {
+  const { tenantId, propertyId } = usePropertyStore.getState();
+  if (!tenantId || !propertyId) return [];
+  const snap = await getDocs(
+    query(
+      collection(
+        db,
+        `tenants/${tenantId}/properties/${propertyId}/paymentIntents`,
+      ),
+      where("reservationId", "==", reservationId),
+      orderBy("initiatedAt", "desc"),
+    ),
+  );
+  return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as PaymentIntent);
 }
 
 /**

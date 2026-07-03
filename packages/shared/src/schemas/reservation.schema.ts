@@ -62,6 +62,73 @@ export const createReservationGroupSchema = z
 
 export type CreateReservationGroupInput = z.infer<typeof createReservationGroupSchema>;
 
+/**
+ * Legacy import: staff manually enters a reservation that was originally
+ * made on a different system (St Lucia SA's system, Ezemvelo KZN Wildlife,
+ * etc.) before the SwiftPMS takeover. The guest arrives with paperwork
+ * from the old system; staff captures it so check-in works, the folio
+ * balances, and any cash top-up on arrival is tracked properly.
+ *
+ * Differences from a walk-in:
+ *   - Dates may be in the past or future
+ *   - Total is TAKEN VERBATIM from the invoice (`totalRoomChargesCents`),
+ *     not computed from our tiered pricing — the old operator's rate is
+ *     what the guest paid.
+ *   - `amountAlreadyPaidCents` applies immediately as a payment on the
+ *     folio, so the balance reflects only what's still owing on arrival.
+ *   - `externalSource` + `externalReference` preserve the paper trail.
+ */
+export const createLegacyReservationSchema = z
+  .object({
+    guestFirstName: z.string().min(1).max(80),
+    guestLastName: z.string().min(1).max(80),
+    guestEmail: z.string().email().nullish().transform((v) => v ?? undefined),
+    guestPhone: z.string().max(40).nullish().transform((v) => v ?? undefined),
+    roomTypeId: z.string().min(1),
+    checkInDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
+    checkOutDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
+    adults: z.number().int().min(1),
+    children: z.number().int().min(0).default(0),
+    /** Total from the original invoice (cents). Overrides tiered pricing. */
+    totalRoomChargesCents: z.number().int().min(0),
+    /** How much has already been paid on the old system (cents). 0 if nothing. */
+    amountAlreadyPaidCents: z.number().int().min(0).default(0),
+    /** Method used for the original payment (staff picks from list). */
+    paymentMethodOriginal: z
+      .enum(["cash", "card", "eft", "other"])
+      .nullish()
+      .transform((v) => v ?? undefined),
+    /** Old system's payment reference (invoice #, receipt #, whatever). */
+    paymentReference: z.string().max(200).nullish().transform((v) => v ?? undefined),
+    /** When the guest originally paid (YYYY-MM-DD). Freeform text if unclear. */
+    paymentDateOriginal: z.string().max(40).nullish().transform((v) => v ?? undefined),
+    /** Human-readable name of the source system. E.g. "St Lucia SA", "Ezemvelo KZN Wildlife". */
+    externalSource: z.string().min(1).max(200),
+    /** Original booking reference on that system. E.g. "Ezemvelo #632772". */
+    externalReference: z.string().max(200).nullish().transform((v) => v ?? undefined),
+    /** Freeform notes — hand-written scrawls on the invoice, arrival instructions, etc. */
+    notes: z.string().max(2000).nullish().transform((v) => v ?? undefined),
+    clientRequestId: z
+      .string()
+      .min(1)
+      .max(128)
+      .nullish()
+      .transform((v) => v ?? undefined),
+  })
+  .refine(
+    (d) => d.checkOutDate > d.checkInDate,
+    { message: "Check-out must be after check-in", path: ["checkOutDate"] },
+  )
+  .refine(
+    (d) => d.amountAlreadyPaidCents <= d.totalRoomChargesCents,
+    {
+      message: "Amount paid cannot exceed the invoice total",
+      path: ["amountAlreadyPaidCents"],
+    },
+  );
+
+export type CreateLegacyReservationInput = z.infer<typeof createLegacyReservationSchema>;
+
 export const checkInSchema = z.object({
   reservationId: z.string().min(1),
   roomId: z.string().min(1).nullish().transform((v) => v ?? undefined),

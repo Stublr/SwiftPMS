@@ -123,6 +123,13 @@ service cloud.firestore {
           allow write: if false;
         }
 
+        // Cash-up shifts — staff read all in-tenant; Cloud Functions write
+        // (openShift + closeShift enforce the "one open at a time" rule).
+        match /shifts/{shiftId} {
+          allow read: if tenantStaff(tenantId);
+          allow write: if false;
+        }
+
         // Payment intents — staff read all; the initiating user reads their own
         // (initiatedBy carries the auth UID). Cloud Functions write.
         match /paymentIntents/{paymentIntentId} {

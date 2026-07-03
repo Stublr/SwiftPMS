@@ -2,7 +2,13 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
-import { db, reservationRef, foliosRef, roomRef } from "../lib/firestore.js";
+import {
+  db,
+  folioRef,
+  foliosRef,
+  reservationRef,
+  roomRef,
+} from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
 import { checkOutSchema } from "@swiftpms/shared";
@@ -17,14 +23,28 @@ export const checkOut = onCall({ cors: true }, async (request) => {
 
     const data = validateRequest(checkOutSchema, request.data);
 
-    // Pre-transaction: find folio doc (queries not allowed inside tx)
-    const folioQuery = await foliosRef(tenantId, propertyId)
-      .where("reservationId", "==", data.reservationId)
-      .limit(1)
-      .get();
-    const folioDocRef = folioQuery.empty ? null : folioQuery.docs[0]!.ref;
-
     const resRefDoc = reservationRef(tenantId, propertyId, data.reservationId);
+
+    // Pre-txn read of the reservation to get its folioId. Group folios
+    // store `reservationIds: [...]` — the legacy `foliosRef.where("reservationId","==",...)`
+    // query only matches the folio's legacy singular field and MISSES
+    // sibling reservations of a group booking. Using the reservation's own
+    // folioId is authoritative for both solo AND group.
+    const preResSnap = await resRefDoc.get();
+    if (!preResSnap.exists) throw notFound("Reservation not found");
+    const preResData = preResSnap.data()!;
+    const folioIdOnRes = preResData.folioId as string | undefined;
+    let folioDocRef: FirebaseFirestore.DocumentReference | null = null;
+    if (folioIdOnRes) {
+      folioDocRef = folioRef(tenantId, propertyId, folioIdOnRes);
+    } else {
+      // Fall back to legacy lookup for pre-group-migration reservations.
+      const folioQuery = await foliosRef(tenantId, propertyId)
+        .where("reservationId", "==", data.reservationId)
+        .limit(1)
+        .get();
+      folioDocRef = folioQuery.empty ? null : folioQuery.docs[0]!.ref;
+    }
 
     await db.runTransaction(async (tx) => {
       const resSnap = await tx.get(resRefDoc);
@@ -35,19 +55,51 @@ export const checkOut = onCall({ cors: true }, async (request) => {
         throw preconditionFailed("Reservation must be checked in to check out");
       }
 
-      // Check folio balance
-      if (folioDocRef) {
-        const folioSnap = await tx.get(folioDocRef);
-        if (folioSnap.exists) {
-          const folio = folioSnap.data()!;
-          if ((folio.balance as number) > 0) {
-            throw preconditionFailed("Folio must be settled before check-out");
+      // Balance guard. If we can't find a folio at all, refuse — the
+      // silent-bypass bug (checkout succeeding with unpaid balance) is
+      // exactly the shortage risk the client is worried about.
+      if (!folioDocRef) {
+        throw preconditionFailed(
+          "Folio not found for this reservation — cannot verify balance. Contact support.",
+        );
+      }
+      const folioSnap = await tx.get(folioDocRef);
+      if (!folioSnap.exists) {
+        throw preconditionFailed(
+          "Folio not found for this reservation — cannot verify balance. Contact support.",
+        );
+      }
+      const folio = folioSnap.data()!;
+      if ((folio.balance as number) > 0) {
+        throw preconditionFailed(
+          `Folio has an outstanding balance of R${((folio.balance as number) / 100).toFixed(2)}. Settle before check-out.`,
+        );
+      }
+      // Only settle the folio if all group siblings have also checked out;
+      // otherwise other siblings still need the folio open for their own
+      // charges (shared folio, group booking case).
+      const folioReservationIds =
+        (folio.reservationIds as string[] | undefined) ?? null;
+      let allSiblingsDone = true;
+      if (folioReservationIds && folioReservationIds.length > 1) {
+        for (const sibId of folioReservationIds) {
+          if (sibId === data.reservationId) continue;
+          const sibSnap = await tx.get(
+            reservationRef(tenantId, propertyId, sibId),
+          );
+          if (!sibSnap.exists) continue;
+          const sibStatus = sibSnap.data()!.status as string;
+          if (sibStatus !== "checked_out" && sibStatus !== "cancelled") {
+            allSiblingsDone = false;
+            break;
           }
-          tx.update(folioDocRef, {
-            status: "settled",
-            updatedAt: FieldValue.serverTimestamp(),
-          });
         }
+      }
+      if (allSiblingsDone) {
+        tx.update(folioDocRef, {
+          status: "settled",
+          updatedAt: FieldValue.serverTimestamp(),
+        });
       }
 
       // Update reservation

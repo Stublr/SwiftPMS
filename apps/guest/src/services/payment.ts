@@ -23,7 +23,13 @@ export interface InitiatePeachCheckoutResult {
 }
 
 export interface SyncPaymentStatusInput {
-  propertyId: string;
+  /**
+   * Optional — needed only for the direct doc-lookup path. Cross-device
+   * return (localStorage cleared / different browser) supplies just
+   * `planktonPaymentId` and lets the server derive propertyId from the
+   * paymentIntent's Firestore path.
+   */
+  propertyId?: string;
   /** Our internal PaymentIntent doc id. Preferred when we have it (same-browser return). */
   paymentIntentId?: string;
   /** Plankton platform's payment id (from ?paymentId=... URL param). Server looks up our intent by field lookup. */

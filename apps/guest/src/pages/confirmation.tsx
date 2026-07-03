@@ -61,21 +61,20 @@ export function ConfirmationPage() {
     if (!planktonPaymentId) return;
 
     const pending = readPendingFromStorage();
-    if (!pending) {
-      // Cross-device return without local context. We can't call
-      // syncPaymentStatus without propertyId. Show a graceful message.
-      setPaymentSync({ kind: "missing_context" });
-      return;
-    }
+    // Cross-device / cleared-storage recovery: even without localStorage,
+    // we can sync via just the URL's planktonPaymentId. Server does the
+    // collection-group lookup and derives propertyId from the doc path.
+    // We just show the standard success screen; the group/download detail
+    // won't be visible on this device, but the money reconciles.
 
     // Restore the booking-store snapshot so check-in/out dates, duration, and
     // the Download button all work — the Peach redirect wiped the in-memory
     // Zustand store on return.
-    if (pending.snapshot) {
+    if (pending?.snapshot) {
       restoreFromSnapshot(pending.snapshot);
     }
     // Group booking: repopulate the group items + result too.
-    if (pending.groupSnapshot) {
+    if (pending?.groupSnapshot) {
       setGroupItems(pending.groupSnapshot.items);
       setGroupResult({
         groupId: pending.groupSnapshot.groupId,
@@ -96,12 +95,12 @@ export function ConfirmationPage() {
       attempts += 1;
       try {
         const res = await syncPaymentStatus({
-          propertyId: pending!.propertyId,
-          // Prefer the URL's paymentId as the primary key (Aidan's spec);
-          // the internal intent id is passed as a hint so same-browser
-          // returns skip the field-lookup query.
+          // Only supply propertyId + paymentIntentId if we have them (same-browser).
+          // Cross-device: only planktonPaymentId is sent and the server
+          // resolves via a collection-group lookup.
+          propertyId: pending?.propertyId,
           planktonPaymentId: planktonPaymentId ?? undefined,
-          paymentIntentId: pending!.paymentIntentId,
+          paymentIntentId: pending?.paymentIntentId,
           forceSync: attempts >= 3,
         });
         if (cancelled) return;

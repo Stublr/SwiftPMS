@@ -2,8 +2,9 @@ import { formatCents } from "@swiftpms/shared";
 import { useEffect, useState } from "react";
 
 import { getDailyAggregates } from "@/services/reports";
+import { CashupPage } from "@/pages/cashup";
 
-type Tab = "occupancy" | "revenue";
+type Tab = "occupancy" | "revenue" | "cashup";
 
 function getDefaultDateRange() {
   const end = new Date();
@@ -43,6 +44,7 @@ export function ReportsPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: "occupancy", label: "Occupancy" },
     { key: "revenue", label: "Revenue" },
+    { key: "cashup", label: "Cash-up" },
   ];
 
   // Compute totals for revenue
@@ -106,8 +108,16 @@ export function ReportsPage() {
         ))}
       </div>
 
-      {loading && (
+      {loading && activeTab !== "cashup" && (
         <div className="mt-8 text-center text-sm text-muted-foreground">Loading...</div>
+      )}
+
+      {/* Cash-up tab — embeds the standalone CashupPage so it's usable
+          both from Reports and from the sidebar Admin section. */}
+      {activeTab === "cashup" && (
+        <div className="-mx-6 mt-2">
+          <CashupPage />
+        </div>
       )}
 
       {/* Occupancy tab */}

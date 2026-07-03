@@ -71,6 +71,16 @@ export const onReservationUpdate = onDocumentUpdated(
         }
       }
 
+      // Reinstate: cancelled → confirmed. Reverse the cancellation counter
+      // we bumped earlier so today's dashboard is consistent. We can't
+      // undo yesterday's counter if the cancel happened yesterday and the
+      // reinstate happens today — that's the timezone/history trade-off of
+      // point-in-time counters. But today→today reinstates balance out.
+      if (before.status === "cancelled" && after.status === "confirmed") {
+        updates.cancellations = FieldValue.increment(-1);
+        updates.reinstates = FieldValue.increment(1);
+      }
+
       if (Object.keys(updates).length > 0) {
         // Count total rooms for occupancy rate
         const roomsSnap = await roomsRef(tenantId, propertyId)

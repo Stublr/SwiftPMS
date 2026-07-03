@@ -74,27 +74,51 @@ function mapStatus(
  */
 async function resolveIntent(
   tenantId: string,
-  propertyId: string,
+  propertyId: string | undefined,
   paymentIntentId: string | undefined,
   planktonPaymentId: string | undefined,
 ): Promise<{
   ref: FirebaseFirestore.DocumentReference;
   data: FirebaseFirestore.DocumentData;
 }> {
-  if (paymentIntentId) {
+  if (paymentIntentId && propertyId) {
     const ref = paymentIntentRef(tenantId, propertyId, paymentIntentId);
     const snap = await ref.get();
     if (!snap.exists) throw notFound("PaymentIntent not found");
     return { ref, data: snap.data()! };
   }
   if (planktonPaymentId) {
-    const q = await paymentIntentsRef(tenantId, propertyId)
+    // With a known property, use the direct subcollection query. Cheaper
+    // and auto-indexed.
+    if (propertyId) {
+      const q = await paymentIntentsRef(tenantId, propertyId)
+        .where("planktonPaymentId", "==", planktonPaymentId)
+        .limit(1)
+        .get();
+      if (!q.empty) {
+        const doc = q.docs[0]!;
+        return { ref: doc.ref, data: doc.data() };
+      }
+    }
+    // Cross-device recovery path: guest returned to /confirmation on a
+    // different device (or with cleared localStorage) so the client has no
+    // propertyId. Fall back to a collection-group query — requires an
+    // explicit collection-group index on paymentIntents.planktonPaymentId
+    // (see firestore.indexes.json). We still enforce the tenant scope
+    // client-side by filtering the matched doc's path.
+    const groupQ = await db
+      .collectionGroup("paymentIntents")
       .where("planktonPaymentId", "==", planktonPaymentId)
-      .limit(1)
+      .limit(5)
       .get();
-    if (q.empty) throw notFound("PaymentIntent not found for this paymentId");
-    const doc = q.docs[0]!;
-    return { ref: doc.ref, data: doc.data() };
+    for (const doc of groupQ.docs) {
+      // Path shape: tenants/{tenantId}/properties/{propertyId}/paymentIntents/{id}
+      const parts = doc.ref.path.split("/");
+      if (parts[0] === "tenants" && parts[1] === tenantId) {
+        return { ref: doc.ref, data: doc.data() };
+      }
+    }
+    throw notFound("PaymentIntent not found for this paymentId");
   }
   throw preconditionFailed(
     "paymentIntentId or planktonPaymentId is required",
@@ -160,14 +184,21 @@ export const syncPaymentStatus = onCall(
       const tenantId = request.auth.token.tenantId as string | undefined;
       if (!tenantId) throw preconditionFailed("tenantId missing on token");
 
-      const propertyId = request.data.propertyId as string;
+      const propertyId = request.data.propertyId as string | undefined;
       const paymentIntentId = request.data.paymentIntentId as
         | string
         | undefined;
       const planktonPaymentIdInput = request.data.planktonPaymentId as
         | string
         | undefined;
-      if (!propertyId) throw preconditionFailed("propertyId is required");
+      // propertyId is optional when planktonPaymentId is provided — the
+      // cross-device recovery path resolves the intent via a
+      // collection-group query and reads propertyId back off the doc path.
+      if (!propertyId && !planktonPaymentIdInput) {
+        throw preconditionFailed(
+          "Either propertyId + paymentIntentId, or planktonPaymentId alone, is required",
+        );
+      }
       const forceSync = request.data.forceSync === true;
 
       const { ref: intentDoc, data: intent } = await resolveIntent(
@@ -177,6 +208,16 @@ export const syncPaymentStatus = onCall(
         planktonPaymentIdInput,
       );
       const resolvedPaymentIntentId = intentDoc.id;
+      // Reconstruct propertyId from the doc's path when the caller didn't
+      // pass one (cross-device path). Every downstream operation
+      // (folioRef, reservationRef, roomRef) needs it.
+      const resolvedPropertyId =
+        propertyId ?? (intentDoc.parent.parent?.id ?? null);
+      if (!resolvedPropertyId) {
+        throw preconditionFailed(
+          "Could not derive propertyId from paymentIntent path",
+        );
+      }
 
       // Idempotency — if already terminal, just return current state.
       const currentStatus = intent.status as PaymentIntentStatus;
@@ -277,7 +318,7 @@ export const syncPaymentStatus = onCall(
         }[] = [];
 
         if (isSuccess && paymentType === "DB" && folioId) {
-          fRef = folioRef(tenantId, propertyId, folioId);
+          fRef = folioRef(tenantId, resolvedPropertyId, folioId);
           folioSnap = await tx.get(fRef);
 
           // Prefer folio.reservationIds (group) over intent.reservationId (solo).
@@ -292,7 +333,7 @@ export const syncPaymentStatus = onCall(
                 : [];
 
           for (const rid of reservationIdsToLoad) {
-            const resR = reservationRef(tenantId, propertyId, rid);
+            const resR = reservationRef(tenantId, resolvedPropertyId, rid);
             const resSnap = await tx.get(resR);
             let roomR: FirebaseFirestore.DocumentReference | null = null;
             let roomSnap: FirebaseFirestore.DocumentSnapshot | null = null;
@@ -300,7 +341,7 @@ export const syncPaymentStatus = onCall(
               ? (resSnap.data()!.roomId as string | null)
               : null;
             if (roomIdOnRes) {
-              roomR = roomRef(tenantId, propertyId, roomIdOnRes);
+              roomR = roomRef(tenantId, resolvedPropertyId, roomIdOnRes);
               roomSnap = await tx.get(roomR);
             }
             resPrefetch.push({ resRef: resR, resSnap, roomRef: roomR, roomSnap });
@@ -385,7 +426,7 @@ export const syncPaymentStatus = onCall(
       // and complete the booking (send confirmation, release the
       // reservation, etc.)."
       if (didApply && isSuccess) {
-        sendConfirmationEmailForIntent(tenantId, propertyId, intent).catch(
+        sendConfirmationEmailForIntent(tenantId, resolvedPropertyId, intent).catch(
           (err) => {
             console.error("[sync] Confirmation email failed", err);
           },
@@ -404,7 +445,7 @@ export const syncPaymentStatus = onCall(
         userId: request.auth.uid,
         userEmail: request.auth.token.email ?? "",
         tenantId,
-        propertyId,
+        propertyId: resolvedPropertyId,
         details: {
           planktonStatus: planktonRes.status,
           planktonFailureReason: planktonRes.failureReason ?? null,

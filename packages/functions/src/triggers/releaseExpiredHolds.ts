@@ -85,6 +85,56 @@ export const releaseExpiredHolds = onSchedule("every 5 minutes", async () => {
             if (!rHold || rHold > now) return;
           }
 
+          // Also pre-read the folio so we can void it in the SAME txn as
+          // the reservation cancel — otherwise a late-arriving payment
+          // (e.g. sweepPendingPayments sees Plankton captured a few
+          // minutes after we release) would apply to an "open" folio for
+          // a cancelled reservation, silently accruing paid money against
+          // a booking that no longer exists.
+          let folioRef: FirebaseFirestore.DocumentReference | null = null;
+          let folioSnap: FirebaseFirestore.DocumentSnapshot | null = null;
+          if (resSnap && resSnap.exists) {
+            const resData = resSnap.data()!;
+            const folioIdOnRes = resData.folioId as string | undefined;
+            const groupId = resData.groupId as string | undefined;
+            if (folioIdOnRes) {
+              folioRef = db.doc(`${propPath}/folios/${folioIdOnRes}`);
+              folioSnap = await tx.get(folioRef);
+              // For group bookings the folio is shared with sibling
+              // reservations. Don't void it if a sibling is still active
+              // (that would clobber their booking's balance state). We
+              // check siblings by folio.reservationIds — if any sibling
+              // status is still confirmed/checked_in, keep the folio open.
+              if (folioSnap.exists && groupId) {
+                const folioData = folioSnap.data()!;
+                const sibIds =
+                  (folioData.reservationIds as string[] | undefined) ?? [];
+                // Read siblings inside the same txn to keep the decision
+                // atomic. Slightly expensive but group bookings are the
+                // exception, not the rule.
+                let hasActiveSibling = false;
+                for (const sibId of sibIds) {
+                  if (sibId === resSnap.id) continue;
+                  const sibSnap = await tx.get(
+                    db.doc(`${propPath}/reservations/${sibId}`),
+                  );
+                  if (!sibSnap.exists) continue;
+                  const sibStatus = sibSnap.data()!.status as string;
+                  if (sibStatus === "confirmed" || sibStatus === "checked_in") {
+                    hasActiveSibling = true;
+                    break;
+                  }
+                }
+                if (hasActiveSibling) {
+                  // Keep folio open for the sibling; still release this
+                  // reservation's room + cancel this reservation below.
+                  folioRef = null;
+                  folioSnap = null;
+                }
+              }
+            }
+          }
+
           // --- All reads done, safe to write. ---
           tx.update(roomDoc.ref, {
             status: "available",
@@ -101,6 +151,22 @@ export const releaseExpiredHolds = onSchedule("every 5 minutes", async () => {
               holdExpiresAt: null,
               updatedAt: now,
             });
+          }
+          // Void the folio so any late-arriving payment settles into a
+          // clearly-void state, not into a live "open" folio. The sync
+          // path checks folio.status === "open" before applying, so a
+          // voided folio makes the intent → SUCCEEDED (audit visible) but
+          // no phantom credit accumulates against a dead booking.
+          if (folioRef && folioSnap?.exists) {
+            const folioData = folioSnap.data()!;
+            if (folioData.status === "open") {
+              tx.update(folioRef, {
+                status: "void",
+                voidedAt: now,
+                voidReason: "Hold expired without payment",
+                updatedAt: now,
+              });
+            }
           }
         });
         console.log(

@@ -82,11 +82,25 @@ export async function getInHouseForDate(date: string): Promise<Reservation[]> {
     .filter((r) => r.checkInDate <= date);
 }
 
-export async function createReservation(data: CreateReservationRequest): Promise<{ id: string }> {
+export async function createReservation(
+  data: CreateReservationRequest,
+): Promise<{
+  id: string;
+  folioId: string;
+  nightCount: number;
+  roomRate: number;
+  totalRoomCharges: number;
+}> {
   const { propertyId } = getPath();
   const fn = httpsCallable(functions, "createReservation");
   const result = await fn({ ...data, propertyId });
-  return result.data as { id: string };
+  return result.data as {
+    id: string;
+    folioId: string;
+    nightCount: number;
+    roomRate: number;
+    totalRoomCharges: number;
+  };
 }
 
 export async function checkInReservation(reservationId: string, roomId?: string): Promise<void> {

@@ -5,6 +5,7 @@ export { assignUserRole } from "./auth/assignUserRole.js";
 
 // Reservation functions
 export { createReservation } from "./reservations/createReservation.js";
+export { createLegacyReservation } from "./reservations/createLegacyReservation.js";
 export { cancelReservation } from "./reservations/cancelReservation.js";
 export { checkIn } from "./reservations/checkIn.js";
 export { checkOut } from "./reservations/checkOut.js";
@@ -20,6 +21,10 @@ export { syncPaymentStatus } from "./billing/syncPaymentStatus.js";
 // Room functions
 export { updateRoomStatus } from "./rooms/updateRoomStatus.js";
 
+// Cash-up functions
+export { openShift } from "./cashup/openShift.js";
+export { closeShift } from "./cashup/closeShift.js";
+
 // Guest portal functions
 export { createGuestAccount } from "./guest/createGuestAccount.js";
 export { checkAvailability } from "./guest/checkAvailability.js";
@@ -30,3 +35,4 @@ export { createGuest } from "./guest/createGuest.js";
 // Triggers
 export { onReservationUpdate } from "./triggers/onReservationUpdate.js";
 export { releaseExpiredHolds } from "./triggers/releaseExpiredHolds.js";
+export { sweepPendingPayments } from "./triggers/sweepPendingPayments.js";

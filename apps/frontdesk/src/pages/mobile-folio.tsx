@@ -2,9 +2,11 @@ import { useEffect, useState } from "react";
 
 import {
   ChargeCategory,
+  PaymentIntentStatus,
   PaymentMethod,
   formatCents,
   type Folio,
+  type PaymentIntent,
   type Reservation,
 } from "@swiftpms/shared";
 
@@ -13,12 +15,14 @@ import {
   getFolioByReservation,
   processPayment,
 } from "@/services/billing";
+import { getPaymentIntentsForReservation, syncPaymentStatus } from "@/services/payment";
 import {
   checkInReservation,
   checkOutReservation,
   getReservation,
 } from "@/services/reservations";
 import { useUIStore } from "@/stores/ui.store";
+import { PeachPayQrButton } from "@/components/peach-pay-qr-button";
 
 function readResId(): string | null {
   if (typeof window === "undefined") return null;
@@ -30,11 +34,13 @@ export function MobileFolioPage() {
   const [resId, setResId] = useState<string | null>(null);
   const [folio, setFolio] = useState<Folio | null>(null);
   const [reservation, setReservation] = useState<Reservation | null>(null);
+  const [intents, setIntents] = useState<PaymentIntent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"none" | "charge" | "payment">("none");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [syncingIntentId, setSyncingIntentId] = useState<string | null>(null);
 
   // Form state
   const [chargeCategory, setChargeCategory] = useState<string>(ChargeCategory.OTHER);
@@ -58,17 +64,41 @@ export function MobileFolioPage() {
     setLoading(true);
     setError(null);
     try {
-      const [f, r] = await Promise.all([
+      const [f, r, pis] = await Promise.all([
         getFolioByReservation(id),
         getReservation(id),
+        getPaymentIntentsForReservation(id).catch(() => []),
       ]);
       setFolio(f);
       setReservation(r);
+      setIntents(pis);
       if (f) setPayAmount((f.balance / 100).toFixed(2));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Load failed");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleRetrySync(intent: PaymentIntent) {
+    if (!reservation) return;
+    setSyncingIntentId(intent.id);
+    try {
+      await syncPaymentStatus({
+        propertyId: reservation.propertyId,
+        paymentIntentId: intent.id,
+        forceSync: true,
+      });
+      if (resId) await load(resId);
+      showToast("Re-synced with Peach.");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `Sync failed: ${err.message}`
+          : "Sync failed",
+      );
+    } finally {
+      setSyncingIntentId(null);
     }
   }
 
@@ -271,23 +301,71 @@ export function MobileFolioPage() {
         </div>
       </details>
 
+      {/* Payment attempts (Peach/Plankton card attempts — successful AND
+          failed AND in-flight). Cashiers need this when a guest says "I
+          paid" but the folio balance doesn't reflect: shows every attempt
+          + why each failed, and a "re-sync" button to re-query Plankton
+          in case the payment landed but our sweeper hasn't caught it yet. */}
+      {intents.length > 0 && (
+        <details open={intents.some((i) => i.status !== PaymentIntentStatus.SUCCEEDED)} className="mt-2 rounded-lg border border-border bg-white">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+            Card payment attempts ({intents.length})
+            {intents.some((i) => i.status === PaymentIntentStatus.FAILED || i.status === PaymentIntentStatus.CANCELLED || i.status === PaymentIntentStatus.EXPIRED) && (
+              <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-medium text-destructive">
+                Includes failed
+              </span>
+            )}
+          </summary>
+          <div className="space-y-2 px-4 pb-3">
+            {intents.map((intent) => (
+              <PaymentAttemptRow
+                key={intent.id}
+                intent={intent}
+                syncing={syncingIntentId === intent.id}
+                onRetrySync={() => handleRetrySync(intent)}
+              />
+            ))}
+          </div>
+        </details>
+      )}
+
       {/* Action buttons */}
       {folio.status === "open" && (
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          <button
-            onClick={() => setMode("charge")}
-            className="rounded-lg border border-border bg-white px-3 py-3 text-sm font-medium"
-          >
-            + Add charge
-          </button>
-          <button
-            onClick={() => setMode("payment")}
-            disabled={folio.balance <= 0}
-            className="rounded-lg bg-primary px-3 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
-          >
-            + Record payment
-          </button>
-        </div>
+        <>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setMode("charge")}
+              className="rounded-lg border border-border bg-white px-3 py-3 text-sm font-medium"
+            >
+              + Add charge
+            </button>
+            <button
+              onClick={() => setMode("payment")}
+              disabled={folio.balance <= 0}
+              className="rounded-lg bg-primary px-3 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              + Record payment
+            </button>
+          </div>
+          {/* Card-payment-by-QR: guest scans the QR on their own phone, pays
+              on the Peach hosted checkout page. No terminal needed on-site. */}
+          {folio.balance > 0 && (
+            <div className="mt-2">
+              <PeachPayQrButton
+                label={`Take Card Payment — ${formatCents(folio.balance)}`}
+                amountCents={folio.balance}
+                purpose="folio_settlement"
+                paymentType="DB"
+                reservationId={folio.reservationId}
+                folioId={folio.id}
+                onSuccess={async () => {
+                  if (resId) await load(resId);
+                  showToast("Payment received via QR.");
+                }}
+              />
+            </div>
+          )}
+        </>
       )}
 
       {/* Check-in / Check-out shortcuts. Buttons only show when the reservation
@@ -423,6 +501,127 @@ export function MobileFolioPage() {
           </div>
         </form>
       )}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------- */
+
+interface PaymentAttemptRowProps {
+  intent: PaymentIntent;
+  syncing: boolean;
+  onRetrySync: () => void;
+}
+
+/**
+ * One row in the "Card payment attempts" list. Shows status pill, amount,
+ * timestamp, and — when relevant — the failure reason from Peach.
+ *
+ * Statuses we can show:
+ *   - SUCCEEDED  → green tick, "Captured"
+ *   - REDIRECTED → amber pulse, "In progress" + Re-sync button (kick sweeper manually)
+ *   - FAILED     → red X, "Failed" + reason
+ *   - CANCELLED  → grey, "Cancelled by guest"
+ *   - EXPIRED    → grey, "Timed out"
+ *   - REFUNDED   → grey, "Refunded"
+ */
+function PaymentAttemptRow({ intent, syncing, onRetrySync }: PaymentAttemptRowProps) {
+  const status = intent.status;
+  const isSucceeded = status === PaymentIntentStatus.SUCCEEDED;
+  const isPending = status === PaymentIntentStatus.REDIRECTED || status === PaymentIntentStatus.INITIATED;
+  const isFailed = status === PaymentIntentStatus.FAILED;
+  const isCancelled = status === PaymentIntentStatus.CANCELLED;
+  const isExpired = status === PaymentIntentStatus.EXPIRED;
+  const isRefunded = status === PaymentIntentStatus.REFUNDED || status === PaymentIntentStatus.PARTIALLY_REFUNDED;
+
+  const pillClass = isSucceeded
+    ? "bg-success/10 text-success"
+    : isPending
+      ? "bg-warning/10 text-warning"
+      : isFailed
+        ? "bg-destructive/10 text-destructive"
+        : isRefunded
+          ? "bg-purple-100 text-purple-800"
+          : "bg-secondary text-muted-foreground";
+
+  const label = isSucceeded
+    ? "Captured"
+    : isPending
+      ? "In progress"
+      : isFailed
+        ? "Failed"
+        : isCancelled
+          ? "Cancelled by guest"
+          : isExpired
+            ? "Timed out"
+            : isRefunded
+              ? status === PaymentIntentStatus.REFUNDED ? "Refunded" : "Partially refunded"
+              : status;
+
+  const failureReason =
+    (intent as unknown as { planktonFailureMessage?: string | null }).planktonFailureMessage ??
+    (intent as unknown as { planktonFailureReason?: string | null }).planktonFailureReason ??
+    intent.peachResultDescription ??
+    null;
+
+  const when = (() => {
+    const ts =
+      (intent as unknown as { initiatedAt?: string }).initiatedAt ??
+      (intent as unknown as { createdAt?: string }).createdAt;
+    if (!ts) return "";
+    try {
+      return new Date(ts).toLocaleString("en-ZA", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return "";
+    }
+  })();
+
+  return (
+    <div className="rounded-md border border-border bg-secondary/40 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${pillClass}`}>
+              {label}
+            </span>
+            <span className="text-sm font-semibold text-foreground">
+              {formatCents(intent.amount)}
+            </span>
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {when && <span>{when}</span>}
+            {when && <span> · </span>}
+            <span className="font-mono">
+              {intent.id.slice(0, 12)}
+            </span>
+          </div>
+          {isFailed && failureReason && (
+            <div className="mt-2 rounded bg-destructive/5 px-2 py-1 text-xs text-destructive">
+              <span className="font-semibold">Reason:</span> {failureReason}
+            </div>
+          )}
+          {isPending && (
+            <div className="mt-2 text-xs text-warning">
+              Peach hasn't confirmed this yet. Sweeper auto-retries every 2 min,
+              or hit re-sync to check right now.
+            </div>
+          )}
+        </div>
+        {isPending && (
+          <button
+            onClick={onRetrySync}
+            disabled={syncing}
+            className="flex-shrink-0 rounded-md border border-border bg-white px-3 py-1.5 text-xs font-medium hover:bg-secondary disabled:opacity-50"
+          >
+            {syncing ? "Syncing…" : "Re-sync"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

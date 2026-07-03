@@ -85,13 +85,68 @@ export const cancelReservation = onCall({ cors: true }, async (request) => {
         updatedAt: FieldValue.serverTimestamp(),
       });
 
-      // Only void the folio when no other group siblings remain. Solo
-      // bookings have hasActiveSiblings=false so the folio still voids.
-      if (folioDocRef && folioSnap?.exists && !hasActiveSiblings) {
-        tx.update(folioDocRef, {
-          status: "void",
-          updatedAt: FieldValue.serverTimestamp(),
-        });
+      // Folio update logic branches on group state:
+      //   - Solo (no group siblings): void the folio entirely.
+      //   - Group with active siblings: STRIP the cancelled site's charges
+      //     from the folio so the balance reflects only what remaining
+      //     siblings owe. If a partial payment already covered this site,
+      //     the folio may now be overpaid — we flag `needsRefund: true`
+      //     with the excess amount so cashiers see it and can refund via
+      //     Peach.
+      if (folioDocRef && folioSnap?.exists) {
+        const folio = folioSnap.data()!;
+        if (!hasActiveSiblings) {
+          // Solo cancel — void the folio.
+          tx.update(folioDocRef, {
+            status: "void",
+            voidedAt: FieldValue.serverTimestamp(),
+            voidReason: `Reservation cancelled: ${data.reason ?? "n/a"}`,
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        } else {
+          // Group booking cancel — recompute folio without this site's charges.
+          interface Charge {
+            id: string;
+            total?: number;
+            reservationId?: string;
+          }
+          const existingCharges = ((folio.charges as Charge[] | undefined) ??
+            []) as Charge[];
+          const keptCharges = existingCharges.filter(
+            (c) => c.reservationId !== data.reservationId,
+          );
+          const removedTotal = existingCharges
+            .filter((c) => c.reservationId === data.reservationId)
+            .reduce((sum, c) => sum + (c.total ?? 0), 0);
+          const oldTotalCharges = (folio.totalCharges as number) ?? 0;
+          const totalPayments = (folio.totalPayments as number) ?? 0;
+          const newTotalCharges = Math.max(0, oldTotalCharges - removedTotal);
+          const newBalance = newTotalCharges - totalPayments;
+          const isOverpaid = newBalance < 0;
+          const refundDueCents = isOverpaid ? Math.abs(newBalance) : 0;
+          // A group folio that's overpaid stays "open" so the cashier can
+          // still see it + issue a refund; folio becomes "settled" when
+          // balance hits zero. Not "void" — there are still active
+          // siblings with real bookings.
+          const newStatus =
+            newBalance === 0
+              ? "settled"
+              : newBalance > 0
+                ? "open"
+                : "open";
+          tx.update(folioDocRef, {
+            charges: keptCharges,
+            totalCharges: newTotalCharges,
+            balance: Math.max(0, newBalance),
+            status: newStatus,
+            needsRefund: isOverpaid,
+            refundDueCents: refundDueCents,
+            refundDueReason: isOverpaid
+              ? `Group cancel — site ${data.reservationId.slice(0, 8).toUpperCase()} was already paid; excess R${(refundDueCents / 100).toFixed(2)} due back to guest`
+              : FieldValue.delete(),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+        }
       }
 
       // Free this reservation's room regardless — siblings have their own rooms.
