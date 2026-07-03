@@ -150,7 +150,7 @@ function RoomsList() {
                 </tr>
               ) : (
                 rooms
-                  .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true }))
+                  .sort((a, b) => (a.roomNumber ?? "").localeCompare(b.roomNumber ?? "", undefined, { numeric: true }))
                   .map((room) => (
                     <tr key={room.id}>
                       <td className="px-4 py-3 font-medium">{room.roomNumber}</td>

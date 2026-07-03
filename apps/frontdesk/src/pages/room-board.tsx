@@ -66,9 +66,10 @@ export function RoomBoardPage() {
     ? rooms
     : rooms.filter((r) => r.status === filterStatus);
 
-  // Sort by room number
+  // Sort by room number. Coalesce undefined → "" so a stray legacy row
+  // without a roomNumber doesn't throw on localeCompare and crash the whole page.
   const sortedRooms = [...filteredRooms].sort((a, b) =>
-    a.roomNumber.localeCompare(b.roomNumber, undefined, { numeric: true }),
+    (a.roomNumber ?? "").localeCompare(b.roomNumber ?? "", undefined, { numeric: true }),
   );
 
   return (
