@@ -33,6 +33,7 @@ export function WalkInPage() {
   const [checkIn, setCheckIn] = useState(todayIso());
   const [checkOut, setCheckOut] = useState(tomorrowIso());
   const [adults, setAdults] = useState(2);
+  const [pensioners, setPensioners] = useState(0);
   const [children, setChildren] = useState(0);
 
   // Inventory
@@ -73,6 +74,7 @@ export function WalkInPage() {
       checkOut,
       adults,
       children,
+      pensioners,
     ).total;
   })();
 
@@ -102,6 +104,7 @@ export function WalkInPage() {
         checkOutDate: checkOut,
         adults,
         children,
+        pensioners,
       });
       setSuccess({ reservationId: reservation.id, folioId: reservation.folioId });
     } catch (err) {
@@ -173,6 +176,7 @@ export function WalkInPage() {
               setPhone("");
               setEmail("");
               setAdults(2);
+              setPensioners(0);
               setChildren(0);
             }}
             className="rounded-lg border border-border px-4 py-3 text-sm font-semibold hover:bg-secondary"
@@ -248,7 +252,21 @@ export function WalkInPage() {
                 onChange={(e) => setAdults(Number(e.target.value))}
                 className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
               >
-                {[1, 2, 3, 4, 5, 6].map((n) => (
+                {[0, 1, 2, 3, 4, 5, 6].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium">
+                Pensioners <span className="text-muted-foreground">(ID required)</span>
+              </label>
+              <select
+                value={pensioners}
+                onChange={(e) => setPensioners(Number(e.target.value))}
+                className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
+              >
+                {[0, 1, 2, 3, 4, 5, 6].map((n) => (
                   <option key={n} value={n}>{n}</option>
                 ))}
               </select>
@@ -288,6 +306,9 @@ export function WalkInPage() {
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">
                 {nights} night{nights !== 1 ? "s" : ""} · {adults} adult{adults !== 1 ? "s" : ""}
+                {pensioners > 0
+                  ? `, ${pensioners} pensioner${pensioners !== 1 ? "s" : ""}`
+                  : ""}
                 {children > 0 ? `, ${children} kid${children !== 1 ? "s" : ""}` : ""}
               </span>
               <span className="text-base font-bold">{formatCents(totalCharge)}</span>

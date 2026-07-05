@@ -20,6 +20,7 @@ export interface LegacyBookingInput {
   checkOutDate: string; // YYYY-MM-DD
   adults: number;
   children?: number;
+  pensioners?: number;
   totalRoomChargesCents: number;
   amountAlreadyPaidCents?: number;
   paymentMethodOriginal?: "cash" | "card" | "eft" | "other";

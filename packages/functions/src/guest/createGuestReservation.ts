@@ -28,6 +28,16 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
     if (!propertyId) throw preconditionFailed("propertyId is required");
 
     const data = validateRequest(createReservationSchema, request.data);
+    // Security: pensioner rates are staff-verified only. Reject any client
+    // attempt to declare pensioners on the guest portal — otherwise anyone
+    // could get the discounted rate by editing the request body. If a guest
+    // is a pensioner, they book at adult rate online and staff applies a
+    // discount at check-in after seeing ID.
+    if ((data.pensioners ?? 0) > 0) {
+      throw preconditionFailed(
+        "Pensioner rates are only available at reception. Book at the standard rate and mention your pensioner status to staff on arrival.",
+      );
+    }
 
     // Idempotency — if we've seen this clientRequestId, return the existing
     // reservation instead of creating a duplicate. Mostly protects against

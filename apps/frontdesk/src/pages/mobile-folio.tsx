@@ -564,6 +564,46 @@ function PaymentAttemptRow({ intent, syncing, onRetrySync }: PaymentAttemptRowPr
     intent.peachResultDescription ??
     null;
 
+  const planktonStatus =
+    (intent as unknown as { planktonStatus?: string | null }).planktonStatus ?? null;
+
+  // Plain-English "what happened" for cashier + customer. Peach/Plankton
+  // often doesn't give a `failureReason` for statuses like `timed_out` or
+  // `cancelled` — the raw gateway status is opaque to a non-technical
+  // cashier. This explanation is always shown for every non-success state,
+  // so staff can answer "why did my payment not go through?" without
+  // needing to open the gateway dashboard.
+  function explanation(): string | null {
+    if (isSucceeded) return null;
+    if (isPending) {
+      return "Peach is still waiting for the guest to complete card entry / 3D-Secure verification. If they closed the tab or their phone screen locked, this will time out after ~15 minutes. Hit Re-sync to check right now.";
+    }
+    if (isFailed) {
+      if (
+        (intent as unknown as { planktonFailureReason?: string })
+          .planktonFailureReason === "sweep_abandoned"
+      ) {
+        return "We couldn't confirm the payment with Peach after 20 automatic attempts. This usually means the payment id no longer exists on Peach's side — check the Plankton dashboard manually.";
+      }
+      return failureReason
+        ? `Peach rejected the payment: ${failureReason}. Ask the guest to try again with a different card or method.`
+        : "The card was declined or the payment couldn't be processed. Ask the guest to try again with a different card or method.";
+    }
+    if (isCancelled) {
+      return "The guest actively cancelled the payment before completing it (closed the checkout page or hit Cancel). No money moved. Guest can retry.";
+    }
+    if (isExpired) {
+      return "The guest didn't finish paying within Peach's time limit (~15 minutes). Usually means they started 3D-Secure but never approved on their banking app. No money moved. Guest can retry.";
+    }
+    if (isRefunded) {
+      return status === PaymentIntentStatus.REFUNDED
+        ? "Full amount refunded to the guest via Peach."
+        : "Part of this payment was refunded to the guest via Peach.";
+    }
+    return null;
+  }
+  const explanationText = explanation();
+
   const when = (() => {
     const ts =
       (intent as unknown as { initiatedAt?: string }).initiatedAt ??
@@ -595,20 +635,37 @@ function PaymentAttemptRow({ intent, syncing, onRetrySync }: PaymentAttemptRowPr
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {when && <span>{when}</span>}
-            {when && <span> · </span>}
-            <span className="font-mono">
-              {intent.id.slice(0, 12)}
-            </span>
+            {when && planktonStatus && <span> · </span>}
+            {planktonStatus && (
+              <span>
+                Peach status: <span className="font-mono">{planktonStatus}</span>
+              </span>
+            )}
+            {(when || planktonStatus) && <span> · </span>}
+            <span className="font-mono">{intent.id.slice(0, 12)}</span>
           </div>
-          {isFailed && failureReason && (
-            <div className="mt-2 rounded bg-destructive/5 px-2 py-1 text-xs text-destructive">
-              <span className="font-semibold">Reason:</span> {failureReason}
-            </div>
-          )}
-          {isPending && (
-            <div className="mt-2 text-xs text-warning">
-              Peach hasn't confirmed this yet. Sweeper auto-retries every 2 min,
-              or hit re-sync to check right now.
+          {explanationText && (
+            <div
+              className={`mt-2 rounded px-2 py-1.5 text-xs ${
+                isFailed
+                  ? "bg-destructive/5 text-destructive"
+                  : isPending
+                    ? "bg-warning/10 text-warning"
+                    : isRefunded
+                      ? "bg-purple-50 text-purple-900"
+                      : "bg-secondary text-foreground"
+              }`}
+            >
+              <span className="font-semibold">
+                {isFailed
+                  ? "Why it failed: "
+                  : isPending
+                    ? "What's happening: "
+                    : isRefunded
+                      ? "Refund status: "
+                      : "What this means: "}
+              </span>
+              {explanationText}
             </div>
           )}
         </div>

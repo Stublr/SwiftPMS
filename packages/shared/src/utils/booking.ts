@@ -33,20 +33,30 @@ export function isPeakStay(
  *   total = baseRate
  *         + max(0, adults - basePersonCount) * extraAdult
  *         + children * extraChild
+ *         + seniors * extraSenior   (if tier.extraSenior defined)
  *
  * If adults < basePersonCount the booking still pays the full base — the
  * base IS the minimum (matches Sugarloaf's "R380 base for 2 persons" rule).
+ *
+ * Seniors (pensioners) are a distinct guest category with their own flat
+ * per-person rate. They don't count against basePersonCount (base always
+ * charged). If the tier doesn't declare `extraSenior`, seniors are billed
+ * at the adult rate — defensive default so a mis-configured room type
+ * doesn't silently undercharge.
  */
 export function calculateTieredNightlyRate(
   tier: PricingTier,
   adults: number,
   children: number,
+  seniors = 0,
 ): number {
   const adultExtras = Math.max(0, adults - tier.basePersonCount);
+  const seniorRate = tier.extraSenior ?? tier.extraAdult;
   return (
     tier.baseRate +
     adultExtras * tier.extraAdult +
-    children * tier.extraChild
+    children * tier.extraChild +
+    seniors * seniorRate
   );
 }
 
@@ -63,10 +73,11 @@ export function calculateTieredStayTotal(
   checkOut: string,
   adults: number,
   children: number,
+  seniors = 0,
 ): { tier: "standard" | "high"; nightlyRate: number; total: number } {
   const isHigh = isPeakStay(tiered, checkIn);
   const tier = isHigh ? tiered.high : tiered.standard;
-  const nightlyRate = calculateTieredNightlyRate(tier, adults, children);
+  const nightlyRate = calculateTieredNightlyRate(tier, adults, children, seniors);
   const nights = calculateNights(checkIn, checkOut);
   return {
     tier: isHigh ? "high" : "standard",

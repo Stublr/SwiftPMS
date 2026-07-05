@@ -8,6 +8,14 @@ export interface PricingTier {
   basePersonCount: number; // typically 1 or 2
   extraAdult: number; // cents per additional adult beyond basePersonCount
   extraChild: number; // cents per additional child under childAgeMax
+  /**
+   * Cents per pensioner per night. Flat rate — doesn't count against
+   * basePersonCount, doesn't scale with base. When missing/undefined,
+   * pensioners are billed as extra adults (defensive default). Only
+   * applicable to staff-mediated bookings — the guest portal doesn't
+   * expose a pensioner input, so ID can be verified at check-in.
+   */
+  extraSenior?: number;
 }
 
 export interface TieredPricing {

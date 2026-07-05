@@ -176,6 +176,7 @@ export const createLegacyReservation = onCall({ cors: true }, async (request) =>
         nightCount,
         adults: data.adults,
         children: data.children ?? 0,
+        pensioners: data.pensioners ?? 0,
         status: "confirmed",
         holdExpiresAt: null,
         roomRate,

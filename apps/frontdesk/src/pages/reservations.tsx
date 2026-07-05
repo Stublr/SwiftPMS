@@ -205,9 +205,16 @@ export function ReservationsPage() {
                 </tr>
               ) : (
                 filteredReservations.map((res) => (
-                  <tr key={res.id} className="hover:bg-secondary/50">
+                  <tr
+                    key={res.id}
+                    onClick={() => setSelectedReservation(res)}
+                    className="cursor-pointer hover:bg-secondary/50"
+                    title="Open billing"
+                  >
                     <td className="px-4 py-3 font-mono text-xs">{res.id.slice(0, 8)}</td>
-                    <td className="px-4 py-3">{guestName(res.guestId)}</td>
+                    <td className="px-4 py-3 font-medium text-primary">
+                      {guestName(res.guestId)}
+                    </td>
                     <td className="px-4 py-3">
                       {res.roomId
                         ? (roomMap.get(res.roomId)?.roomNumber ?? res.roomId.slice(0, 8))
@@ -220,16 +227,16 @@ export function ReservationsPage() {
                       <StatusBadge status={res.status} />
                     </td>
                     <td className="px-4 py-3 text-right">
+                      {/* Actions column — every button stopPropagation so the
+                          row's onClick (open billing) doesn't fire when the
+                          cashier meant to check in/out or cancel. */}
                       <div className="flex justify-end gap-2">
-                        <button
-                          onClick={() => setSelectedReservation(res)}
-                          className="rounded-md bg-secondary px-2 py-1 text-xs font-medium hover:bg-secondary/80"
-                        >
-                          Billing
-                        </button>
                         {res.status === ReservationStatus.CONFIRMED && (
                           <button
-                            onClick={() => handleCheckIn(res.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCheckIn(res.id);
+                            }}
                             className="rounded-md bg-success/10 px-2 py-1 text-xs font-medium text-success hover:bg-success/20"
                           >
                             Check In
@@ -237,7 +244,10 @@ export function ReservationsPage() {
                         )}
                         {res.status === ReservationStatus.CHECKED_IN && (
                           <button
-                            onClick={() => handleCheckOut(res.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCheckOut(res.id);
+                            }}
                             className="rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary hover:bg-primary/20"
                           >
                             Check Out
@@ -245,12 +255,29 @@ export function ReservationsPage() {
                         )}
                         {res.status === ReservationStatus.CONFIRMED && (
                           <button
-                            onClick={() => handleCancel(res.id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleCancel(res.id);
+                            }}
                             className="rounded-md bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/20"
                           >
                             Cancel
                           </button>
                         )}
+                        {/* Chevron hint that row is clickable */}
+                        <svg
+                          className="h-4 w-4 self-center text-muted-foreground"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={2}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
                       </div>
                     </td>
                   </tr>

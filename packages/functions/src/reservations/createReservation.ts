@@ -89,6 +89,7 @@ export const createReservation = onCall({ cors: true }, async (request) => {
       const tiered = roomType.tieredPricing as TieredPricing | undefined;
       const adults = data.adults;
       const children = data.children ?? 0;
+      const pensioners = data.pensioners ?? 0;
 
       let roomRate: number;
       let totalRoomCharges: number;
@@ -100,6 +101,7 @@ export const createReservation = onCall({ cors: true }, async (request) => {
           data.checkOutDate,
           adults,
           children,
+          pensioners,
         );
         roomRate = calc.nightlyRate;
         totalRoomCharges = calc.total;
@@ -107,7 +109,11 @@ export const createReservation = onCall({ cors: true }, async (request) => {
           children > 0
             ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}`
             : "";
-        chargeDescription = `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel})`;
+        const pensionerLabel =
+          pensioners > 0
+            ? `, ${pensioners} pensioner${pensioners !== 1 ? "s" : ""}`
+            : "";
+        chargeDescription = `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel}${pensionerLabel})`;
       } else {
         roomRate = roomType.baseRate as number;
         totalRoomCharges = multiplyCents(roomRate, nightCount);
@@ -125,6 +131,7 @@ export const createReservation = onCall({ cors: true }, async (request) => {
         nightCount,
         adults: data.adults,
         children: data.children ?? 0,
+        pensioners: data.pensioners ?? 0,
         status: "confirmed",
         roomRate,
         totalRoomCharges,

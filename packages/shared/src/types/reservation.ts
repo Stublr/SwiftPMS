@@ -15,6 +15,8 @@ export interface Reservation {
   nightCount: number;
   adults: number;
   children: number;
+  /** Pensioners in the group (staff-mediated only — guest portal never sets this). */
+  pensioners?: number;
   status: ReservationStatus;
   roomRate: number; // cents per night (snapshot at booking time)
   totalRoomCharges: number; // cents
@@ -40,6 +42,8 @@ export interface CreateReservationRequest {
   checkOutDate: string;
   adults: number;
   children?: number;
+  /** Staff-mediated only. Guest portal rejects this — pensioners must show ID at reception. */
+  pensioners?: number;
   specialRequests?: string;
 }
 

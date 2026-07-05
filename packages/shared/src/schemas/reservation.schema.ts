@@ -9,8 +9,10 @@ export const createReservationSchema = z
     roomId: z.string().min(1).nullish().transform((v) => v ?? undefined),
     checkInDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
     checkOutDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
-    adults: z.number().int().min(1, "At least 1 adult"),
+    adults: z.number().int().min(0),
     children: z.number().int().min(0).default(0),
+    /** Pensioners (SA senior citizens, staff-verified). Priced at the tier's extraSenior rate. */
+    pensioners: z.number().int().min(0).default(0),
     specialRequests: z.string().max(1000).nullish().transform((v) => v ?? undefined),
     // Optional client-generated idempotency token to dedupe retries.
     clientRequestId: z
@@ -23,6 +25,10 @@ export const createReservationSchema = z
   .refine(
     (d) => d.checkOutDate > d.checkInDate,
     { message: "Check-out must be after check-in", path: ["checkOutDate"] },
+  )
+  .refine(
+    (d) => (d.adults + (d.pensioners ?? 0) + (d.children ?? 0)) >= 1,
+    { message: "At least one person is required", path: ["adults"] },
   );
 
 /**
@@ -87,8 +93,10 @@ export const createLegacyReservationSchema = z
     roomTypeId: z.string().min(1),
     checkInDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
     checkOutDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
-    adults: z.number().int().min(1),
+    adults: z.number().int().min(0),
     children: z.number().int().min(0).default(0),
+    /** Pensioners in the group (staff-verified). Priced per tier's extraSenior rate. */
+    pensioners: z.number().int().min(0).default(0),
     /** Total from the original invoice (cents). Overrides tiered pricing. */
     totalRoomChargesCents: z.number().int().min(0),
     /** How much has already been paid on the old system (cents). 0 if nothing. */

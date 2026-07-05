@@ -48,6 +48,7 @@ export function LegacyBookingPage() {
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
   const [adults, setAdults] = useState(2);
+  const [pensioners, setPensioners] = useState(0);
   const [children, setChildren] = useState(0);
 
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
@@ -135,6 +136,7 @@ export function LegacyBookingPage() {
         checkOutDate: checkOut,
         adults,
         children,
+        pensioners,
         totalRoomChargesCents: totalCents!,
         amountAlreadyPaidCents: paidCents,
         paymentMethodOriginal: paidCents > 0 ? paymentMethod : undefined,
@@ -209,6 +211,7 @@ export function LegacyBookingPage() {
               setCheckIn("");
               setCheckOut("");
               setAdults(2);
+              setPensioners(0);
               setChildren(0);
               setTotalRands("");
               setAmountPaidRands("");
@@ -284,7 +287,20 @@ export function LegacyBookingPage() {
               onChange={(e) => setAdults(Number(e.target.value))}
               className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
             >
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+              {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Pensioners (ID)">
+            <select
+              value={pensioners}
+              onChange={(e) => setPensioners(Number(e.target.value))}
+              className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
+            >
+              {[0, 1, 2, 3, 4, 5, 6].map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>
