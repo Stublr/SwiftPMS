@@ -20,6 +20,18 @@ const FROM_EMAIL: any = defineString("FROM_EMAIL", {
   default: "SwiftPMS <bookings@swiftpms.example>",
 });
 
+/**
+ * Comma-separated list of email addresses to BCC on every booking
+ * confirmation. Used so the front gate keeps its own copy — if a guest
+ * loses their confirmation email, the gate can pull it from this
+ * mailbox and verify arrival. Blank = no BCC. Not exposed to guests
+ * (BCC, not CC, so the reply chain stays clean).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const CONFIRMATION_EMAIL_BCC: any = defineString("CONFIRMATION_EMAIL_BCC", {
+  default: "",
+});
+
 export interface BookingEmailData {
   to: string;
   guestName: string;
@@ -112,13 +124,21 @@ export async function sendBookingConfirmation(opts: BookingEmailData) {
   }
 
   const refId = opts.reservationId.slice(0, 8).toUpperCase();
+  const bccRaw = (CONFIRMATION_EMAIL_BCC.value() ?? "").trim();
+  const bccList = bccRaw
+    ? bccRaw
+        .split(",")
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 0 && s.toLowerCase() !== opts.to.toLowerCase())
+        .map((email: string) => ({ email }))
+    : [];
+  const personalization: Record<string, unknown> = {
+    to: [{ email: opts.to }],
+    dynamic_template_data: buildDynamicTemplateData(opts),
+  };
+  if (bccList.length > 0) personalization.bcc = bccList;
   const body = {
-    personalizations: [
-      {
-        to: [{ email: opts.to }],
-        dynamic_template_data: buildDynamicTemplateData(opts),
-      },
-    ],
+    personalizations: [personalization],
     from: parseFromAddress(FROM_EMAIL.value()),
     subject: `Booking Confirmed - ${opts.propertyName} (#${refId})`,
     template_id: templateId,
