@@ -15,6 +15,7 @@ const ROLE_OPTIONS = [
   { value: UserRole.FRONT_DESK, label: "Front Desk" },
   { value: UserRole.HOUSEKEEPING, label: "Housekeeping" },
   { value: UserRole.AUDITOR, label: "Auditor" },
+  { value: UserRole.SCANNER, label: "Scanner" },
 ];
 
 export function UsersPage() {
