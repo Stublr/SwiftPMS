@@ -228,6 +228,10 @@ function UserForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.propertyIds.length === 0) {
+      setError("Select at least one property");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -235,8 +239,8 @@ function UserForm({
         ...form,
         pin: form.pin || undefined,
       });
-    } catch {
-      setError("Failed to create user");
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : "Failed to create user");
     } finally {
       setSaving(false);
     }
@@ -278,6 +282,8 @@ function UserForm({
           <input
             type="password"
             required
+            minLength={8}
+            title="Password must be at least 8 characters"
             value={form.password}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
@@ -302,7 +308,8 @@ function UserForm({
           <input
             type="text"
             maxLength={6}
-            pattern="\d{0,6}"
+            pattern="\d{4,6}"
+            title="PIN must be 4-6 digits (or leave empty)"
             value={form.pin}
             onChange={(e) => setForm((f) => ({ ...f, pin: e.target.value }))}
             className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
@@ -380,8 +387,8 @@ function UserEditForm({
     setError("");
     try {
       await onSave(form);
-    } catch {
-      setError("Failed to update user");
+    } catch (err) {
+      setError(err instanceof Error && err.message ? err.message : "Failed to update user");
     } finally {
       setSaving(false);
     }
