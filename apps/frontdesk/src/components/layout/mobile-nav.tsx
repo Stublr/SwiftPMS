@@ -1,3 +1,6 @@
+import { UserRole } from "@swiftpms/shared";
+
+import { useAuthStore } from "@/stores/auth.store";
 import { useUIStore } from "@/stores/ui.store";
 
 const TABS = [
@@ -10,14 +13,18 @@ const TABS = [
 export function MobileNav() {
   const currentPage = useUIStore((s) => s.currentPage);
   const navigate = useUIStore((s) => s.navigate);
+  const role = useAuthStore((s) => s.user?.role);
+
+  // A scanner is locked to the scan flow, so it's the only tab they see.
+  const tabs = role === UserRole.SCANNER ? TABS.filter((tab) => tab.path === "/scan") : TABS;
 
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-white shadow-[0_-4px_8px_-2px_rgba(0,0,0,0.08)] md:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <ul className="grid grid-cols-4">
-        {TABS.map((tab) => {
+      <ul className={`grid ${tabs.length === 1 ? "grid-cols-1" : "grid-cols-4"}`}>
+        {tabs.map((tab) => {
           const active =
             currentPage === tab.path ||
             (tab.path === "/" && currentPage !== "/today" && currentPage !== "/scan" && currentPage !== "/walk-in");

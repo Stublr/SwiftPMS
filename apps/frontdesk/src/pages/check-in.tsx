@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 
 import {
   ReservationStatus,
+  UserRole,
   formatCents,
   type Reservation,
 } from "@swiftpms/shared";
 
 import { db, functions } from "@/lib/firebase";
+import { checkOutReservation } from "@/services/reservations";
 import { useAuthStore } from "@/stores/auth.store";
 import { usePropertyStore } from "@/stores/property.store";
 import { useUIStore } from "@/stores/ui.store";
@@ -60,6 +62,7 @@ export function CheckInPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checkingIn, setCheckingIn] = useState(false);
+  const [checkingOut, setCheckingOut] = useState(false);
   // Group booking siblings (empty for solo bookings).
   const [groupSiblings, setGroupSiblings] = useState<Reservation[]>([]);
   const [bulkCheckIn, setBulkCheckIn] = useState<{
@@ -177,6 +180,21 @@ export function CheckInPage() {
       setError(err instanceof Error ? err.message : "Check-in failed");
     } finally {
       setCheckingIn(false);
+    }
+  }
+
+  async function handleCheckOut() {
+    if (!reservation) return;
+    setCheckingOut(true);
+    setError(null);
+    try {
+      await checkOutReservation(reservation.id);
+      // Reload to reflect new status
+      if (target) await loadReservation(target);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Check-out failed");
+    } finally {
+      setCheckingOut(false);
     }
   }
 
@@ -462,15 +480,27 @@ export function CheckInPage() {
                       : "Check In Guest"}
                 </button>
               )}
+              {/* Status-gated (not validity.kind) — an overstaying guest shows
+                  validity.kind "expired" but is still checked_in and must
+                  remain checkoutable. */}
+              {reservation.status === ReservationStatus.CHECKED_IN && (
+                <button
+                  onClick={handleCheckOut}
+                  disabled={checkingOut}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {checkingOut ? "Checking out…" : "Check Out Guest"}
+                </button>
+              )}
               <button
                 onClick={() => {
-                  // Strip query string + go to dashboard
+                  // Strip query string + go back to the role's home page
                   window.history.replaceState({}, "", "/");
-                  navigate("/");
+                  navigate(user?.role === UserRole.SCANNER ? "/scan" : "/");
                 }}
                 className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary"
               >
-                Back to Dashboard
+                {user?.role === UserRole.SCANNER ? "Scan another" : "Back to Dashboard"}
               </button>
             </div>
           </div>

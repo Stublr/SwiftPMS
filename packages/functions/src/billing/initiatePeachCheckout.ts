@@ -4,6 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import {
+  PaymentIntentPurpose,
   PaymentIntentStatus,
   initiatePeachCheckoutRequestSchema,
 } from "@swiftpms/shared";
@@ -27,6 +28,7 @@ import { validateRequest } from "../lib/validation.js";
 import {
   PLANKTON_API_KEY,
   PLANKTON_BASE_URL,
+  PLANKTON_GUEST_RETURN_URL_TEMPLATE,
   PLANKTON_RETURN_URL_TEMPLATE,
   PLANKTON_SANDBOX,
   PLANKTON_TENANT_ID,
@@ -44,14 +46,18 @@ function genId(prefix: string): string {
 }
 
 /**
- * Return URL sent to Peach via Plankton. Read verbatim from the
- * PLANKTON_RETURN_URL_TEMPLATE env var so we can flip between the
- * lite.plnktn.io proxy (current, while Peach hasn't allowlisted our
- * domain) and swiftpms-guest.web.app (target, once allowlisted) without
- * a code change. The literal `{paymentId}` is substituted by the platform.
+ * Return URL sent to Peach via Plankton — where the shopper's browser lands
+ * after paying. Guest-booking-website payments (purpose "guest_booking")
+ * return to swiftpms-guest.web.app (Peach-allowlisted); that confirmation page
+ * then client-side redirects the shopper on to the bookings.algafusion.com
+ * custom domain. All other (frontdesk) purposes keep the existing
+ * PLANKTON_RETURN_URL_TEMPLATE and are unaffected. The literal `{paymentId}`
+ * is substituted by the platform.
  */
-function returnUrlTemplate(): string {
-  return PLANKTON_RETURN_URL_TEMPLATE.value();
+function returnUrlTemplate(purpose: string): string {
+  return purpose === PaymentIntentPurpose.GUEST_BOOKING
+    ? PLANKTON_GUEST_RETURN_URL_TEMPLATE.value()
+    : PLANKTON_RETURN_URL_TEMPLATE.value();
 }
 
 /**
@@ -212,10 +218,11 @@ export const initiatePeachCheckout = onCall(
         channel: "online",
         captureMode: paymentType === "PA" ? "manual" : "automatic",
         orderReference: data.reservationId ?? data.folioId ?? intentId,
-        // returnUrl = where the shopper's BROWSER lands. Configured via
-        // PLANKTON_RETURN_URL_TEMPLATE — currently the lite.plnktn.io
-        // proxy which forwards to our /confirmation?paymentId=X.
-        returnUrl: returnUrlTemplate(),
+        // returnUrl = where the shopper's BROWSER lands. Guest bookings return
+        // to swiftpms-guest.web.app (which then client-side bounces to
+        // bookings.algafusion.com); frontdesk purposes use the unchanged
+        // PLANKTON_RETURN_URL_TEMPLATE.
+        returnUrl: returnUrlTemplate(data.purpose),
         // shopperResultUrl = Plankton's own hook. Peach POSTs here first.
         shopperResultUrl: PLANKTON_SHOPPER_RESULT_URL,
         customer: {

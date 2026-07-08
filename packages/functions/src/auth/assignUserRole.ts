@@ -9,7 +9,7 @@ import { validateRequest } from "../lib/validation.js";
 
 const assignRoleSchema = z.object({
   userId: z.string().min(1),
-  role: z.enum(["super_admin", "property_manager", "front_desk", "housekeeping", "auditor"]),
+  role: z.enum(["super_admin", "property_manager", "front_desk", "housekeeping", "auditor", "scanner"]),
   propertyIds: z.array(z.string()).min(1).optional(),
 });
 

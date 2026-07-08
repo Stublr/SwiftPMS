@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
-import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
+import { forbidden, notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
 import {
   db,
   folioRef,
@@ -16,6 +16,9 @@ import { checkOutSchema } from "@swiftpms/shared";
 export const checkOut = onCall({ cors: true }, async (request) => {
   try {
     if (!request.auth) throw unauthorized();
+    if (request.auth.token.role === "guest") {
+      throw forbidden("Guests cannot check reservations in or out.");
+    }
 
     const tenantId = request.auth.token.tenantId as string;
     const propertyId = request.data.propertyId as string;

@@ -56,6 +56,21 @@ export function ConfirmationPage() {
   // id alone) plus our internal intent id if we have it.
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // Peach's returnUrl lands the shopper on swiftpms-guest.web.app (the
+    // domain on Peach's merchant allowlist), but the booking started on the
+    // custom domain bookings.algafusion.com — and localStorage is per-origin,
+    // so the pending-payment snapshot only exists there. Bounce to the custom
+    // domain (preserving the full query string, incl. paymentId) BEFORE we
+    // read localStorage or start polling. replace() keeps this out of history
+    // so Back doesn't loop. No-op on the custom domain and on localhost/dev.
+    if (window.location.hostname === "swiftpms-guest.web.app") {
+      window.location.replace(
+        `https://bookings.algafusion.com${window.location.pathname}${window.location.search}${window.location.hash}`,
+      );
+      return;
+    }
+
     const params = new URLSearchParams(window.location.search);
     const planktonPaymentId = params.get("paymentId");
     if (!planktonPaymentId) return;
@@ -294,6 +309,13 @@ export function ConfirmationPage() {
   // Payment sync state overrides the main confirmation view until we have
   // a terminal payment result. This is the guest-portal return target
   // (returnUrl on the Plankton platform).
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname === "swiftpms-guest.web.app"
+  ) {
+    return null;
+  }
+
   if (paymentSync.kind === "syncing") {
     return (
       <div className="mx-auto max-w-md px-6 py-20 text-center">

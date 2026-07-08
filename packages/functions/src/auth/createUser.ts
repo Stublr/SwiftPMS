@@ -15,7 +15,7 @@ const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   fullName: z.string().min(1),
-  role: z.enum(["super_admin", "property_manager", "front_desk", "housekeeping", "auditor"]),
+  role: z.enum(["super_admin", "property_manager", "front_desk", "housekeeping", "auditor", "scanner"]),
   pin: z.string().regex(/^\d{4,6}$/).optional(),
   propertyIds: z.array(z.string()).min(1),
 });

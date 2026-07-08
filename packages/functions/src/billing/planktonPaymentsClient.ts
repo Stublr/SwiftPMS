@@ -26,18 +26,33 @@ export const PLANKTON_SANDBOX: any = defineString("PLANKTON_SANDBOX", {
   default: "true",
 });
 
-// Return URL template sent to Peach via Plankton's POST /payments. Peach
-// validates the domain against the merchant's allowlist. Until our own
-// swiftpms-guest.web.app is whitelisted, we use the Plankton proxy at
-// lite.plnktn.io — Aidan's platform then forwards the shopper to our
-// /confirmation?paymentId={paymentId} page. Once Peach whitelists us,
-// flip this to https://swiftpms-guest.web.app/confirmation?paymentId={paymentId}.
-// The literal "{paymentId}" is substituted by the Plankton platform.
+// Return URL template sent to Peach via Plankton's POST /payments — where the
+// shopper's browser lands after paying. Peach validates the domain against the
+// merchant allowlist. This is the DEFAULT / FRONTDESK return URL, used for
+// frontdesk purposes (folio_settlement, card_on_arrival_preauth). The guest
+// booking website uses PLANKTON_GUEST_RETURN_URL_TEMPLATE (below) instead, so
+// this value/behaviour is unchanged. The literal "{paymentId}" is substituted
+// by the Plankton platform.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const PLANKTON_RETURN_URL_TEMPLATE: any = defineString(
   "PLANKTON_RETURN_URL_TEMPLATE",
   {
     default: "https://lite.plnktn.io/confirmation?paymentId={paymentId}",
+  },
+);
+
+// Return URL for the GUEST booking website only (purpose === "guest_booking").
+// Peach allowlists swiftpms-guest.web.app, so the guest returnUrl points there;
+// the guest confirmation page then client-side redirects the shopper on to the
+// bookings.algafusion.com custom domain (where the booking's localStorage
+// snapshot lives). Kept separate from PLANKTON_RETURN_URL_TEMPLATE so the
+// frontdesk flow is unaffected. The literal "{paymentId}" is substituted by
+// the Plankton platform.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const PLANKTON_GUEST_RETURN_URL_TEMPLATE: any = defineString(
+  "PLANKTON_GUEST_RETURN_URL_TEMPLATE",
+  {
+    default: "https://swiftpms-guest.web.app/confirmation?paymentId={paymentId}",
   },
 );
 

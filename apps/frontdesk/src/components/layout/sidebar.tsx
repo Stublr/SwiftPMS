@@ -1,3 +1,6 @@
+import { UserRole } from "@swiftpms/shared";
+
+import { useAuthStore } from "@/stores/auth.store";
 import { useUIStore } from "@/stores/ui.store";
 
 const mainNavItems = [
@@ -16,10 +19,15 @@ const adminNavItems = [
   { label: "Staff", path: "/admin/users", icon: "U" },
 ];
 
+// A scanner has no use for the full PMS nav -- just a way back to the scanner.
+const scannerNavItems = [{ label: "Scan", path: "/scan", icon: "Q" }];
+
 export function Sidebar() {
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
   const currentPage = useUIStore((s) => s.currentPage);
   const navigate = useUIStore((s) => s.navigate);
+  const role = useAuthStore((s) => s.user?.role);
+  const isScanner = role === UserRole.SCANNER;
 
   function renderNavButton(item: { label: string; path: string; icon: string }) {
     return (
@@ -53,19 +61,25 @@ export function Sidebar() {
       {/* Property info removed — now in header dropdown */}
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-2">
-        {mainNavItems.map(renderNavButton)}
+        {isScanner ? (
+          scannerNavItems.map(renderNavButton)
+        ) : (
+          <>
+            {mainNavItems.map(renderNavButton)}
 
-        {/* Admin section divider */}
-        {sidebarOpen && (
-          <div className="px-3 pt-4 pb-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/40">
-              Admin
-            </p>
-          </div>
+            {/* Admin section divider */}
+            {sidebarOpen && (
+              <div className="px-3 pt-4 pb-1">
+                <p className="text-xs font-semibold uppercase tracking-wider text-white/40">
+                  Admin
+                </p>
+              </div>
+            )}
+            {!sidebarOpen && <div className="my-2 border-t border-white/10" />}
+
+            {adminNavItems.map(renderNavButton)}
+          </>
         )}
-        {!sidebarOpen && <div className="my-2 border-t border-white/10" />}
-
-        {adminNavItems.map(renderNavButton)}
       </nav>
     </aside>
   );

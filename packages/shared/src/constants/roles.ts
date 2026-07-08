@@ -4,6 +4,7 @@ export const UserRole = {
   FRONT_DESK: "front_desk",
   HOUSEKEEPING: "housekeeping",
   AUDITOR: "auditor",
+  SCANNER: "scanner",
   GUEST: "guest",
 } as const;
 
@@ -17,6 +18,7 @@ export const STAFF_ROLES: UserRole[] = [
   UserRole.FRONT_DESK,
   UserRole.HOUSEKEEPING,
   UserRole.AUDITOR,
+  UserRole.SCANNER,
 ];
 
 export const MANAGER_ROLES: UserRole[] = [

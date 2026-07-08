@@ -1,6 +1,8 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { UserRole } from "@swiftpms/shared";
+
 import { Header } from "@/components/layout/header";
 import { InstallPrompt } from "@/components/install-prompt";
 import { Sidebar } from "@/components/layout/sidebar";
@@ -27,8 +29,22 @@ import { useAuthStore } from "@/stores/auth.store";
 import { usePropertyStore } from "@/stores/property.store";
 import { useUIStore } from "@/stores/ui.store";
 
+// Roles absent from this map are unrestricted (existing behavior for all
+// staff roles). A scanner is locked to the scan + check-in flow only.
+const ROLE_ALLOWED_PATHS: Partial<Record<UserRole, string[]>> = {
+  [UserRole.SCANNER]: ["/scan", "/check-in"],
+};
+
 function PageRouter() {
   const currentPage = useUIStore((s) => s.currentPage);
+  const role = useAuthStore((s) => s.user?.role);
+
+  const allowedPaths = role ? ROLE_ALLOWED_PATHS[role] : undefined;
+  if (allowedPaths && !allowedPaths.includes(currentPage)) {
+    // Render the scanner's home directly instead of navigating during
+    // render (which would set up a render -> effect -> render loop).
+    return <ScanPage />;
+  }
 
   switch (currentPage) {
     case "/rooms":
@@ -105,6 +121,8 @@ function AuthenticatedLayout() {
 
 export function App() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const role = useAuthStore((s) => s.user?.role);
+  const currentPage = useUIStore((s) => s.currentPage);
   const navigate = useUIStore((s) => s.navigate);
   const [, setForceRender] = useState(0);
 
@@ -124,6 +142,15 @@ export function App() {
       navigate(path);
     }
   }, [navigate]);
+
+  // A scanner's home is /scan, not the Dashboard -- send them there directly
+  // once authenticated so they never see a Dashboard flash before the
+  // PageRouter gate would otherwise bounce them.
+  useEffect(() => {
+    if (isAuthenticated && role === UserRole.SCANNER && currentPage === "/") {
+      navigate("/scan");
+    }
+  }, [isAuthenticated, role, currentPage, navigate]);
 
   function handleLoginSuccess() {
     setForceRender((n) => n + 1);

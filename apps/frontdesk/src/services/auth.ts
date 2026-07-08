@@ -1,4 +1,4 @@
-import type { AuthUser, FirebaseCustomClaims } from "@swiftpms/shared";
+import { STAFF_ROLES, type AuthUser, type FirebaseCustomClaims } from "@swiftpms/shared";
 import {
   signInWithEmailAndPassword,
   signInWithCustomToken,
@@ -26,6 +26,13 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   const credential = await signInWithEmailAndPassword(auth, email, password);
   const tokenResult = await credential.user.getIdTokenResult();
   const claims = tokenResult.claims as unknown as FirebaseCustomClaims;
+
+  // Guests get their own portal — the PMS is staff-only.
+  if (!STAFF_ROLES.includes(claims.role)) {
+    await signOut(auth);
+    throw new Error("This account can't access the PMS. Please use the guest portal.");
+  }
+
   const user = userFromFirebase(credential.user, claims);
   useAuthStore.getState().setAuth(user);
   return user;
@@ -43,6 +50,12 @@ export async function pinLogin(
 
   const result = await callPinLogin({ pin, propertyId, tenantId });
   const { customToken, user } = result.data;
+
+  // Defense in depth -- PIN login is staff-only, mirroring login() above.
+  if (!STAFF_ROLES.includes(user.role)) {
+    await signOut(auth);
+    throw new Error("This account can't access the PMS. Please use the guest portal.");
+  }
 
   await signInWithCustomToken(auth, customToken);
   useAuthStore.getState().setAuth(user);
@@ -63,6 +76,16 @@ export function initAuthListener(): () => void {
     if (firebaseUser) {
       const tokenResult = await firebaseUser.getIdTokenResult();
       const claims = tokenResult.claims as unknown as FirebaseCustomClaims;
+
+      // Critical path: a guest with an existing Firebase session hits this on
+      // every page load. Sign them out of the PMS session rather than
+      // letting the listener grant them staff access.
+      if (!STAFF_ROLES.includes(claims.role)) {
+        await signOut(auth);
+        useAuthStore.getState().clearAuth();
+        return;
+      }
+
       const user = userFromFirebase(firebaseUser, claims);
       useAuthStore.getState().setAuth(user);
     } else {
