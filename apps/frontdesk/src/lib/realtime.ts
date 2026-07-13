@@ -1,7 +1,15 @@
 import { collection, doc, onSnapshot, query, where, orderBy, type Unsubscribe } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { usePropertyStore } from "@/stores/property.store";
-import type { Room, Reservation } from "@swiftpms/shared";
+import { ReservationStatus, type Room, type Reservation } from "@swiftpms/shared";
+
+// Arrivals/departures panels and the daily count should reflect live bookings
+// only — cancelled and no-show reservations are not arriving or departing.
+const LIVE_RESERVATION_STATUSES = new Set<string>([
+  ReservationStatus.CONFIRMED,
+  ReservationStatus.CHECKED_IN,
+  ReservationStatus.CHECKED_OUT,
+]);
 
 function getPath() {
   const { tenantId, propertyId } = usePropertyStore.getState();
@@ -27,7 +35,11 @@ export function onTodayReservations(callback: (reservations: Reservation[]) => v
   const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`);
   const q = query(colRef, where("checkInDate", "==", today), orderBy("createdAt", "desc"));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation));
+    callback(
+      snap.docs
+        .map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation)
+        .filter((r) => LIVE_RESERVATION_STATUSES.has(r.status)),
+    );
   }, () => callback([]));
 }
 
@@ -37,7 +49,11 @@ export function onTodayDepartures(callback: (reservations: Reservation[]) => voi
   const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`);
   const q = query(colRef, where("checkOutDate", "==", today), orderBy("createdAt", "desc"));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation));
+    callback(
+      snap.docs
+        .map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation)
+        .filter((r) => LIVE_RESERVATION_STATUSES.has(r.status)),
+    );
   }, () => callback([]));
 }
 

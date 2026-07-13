@@ -79,6 +79,9 @@ export function clearPendingFromStorage() {
 export function PaymentResultPage() {
   const navigate = useUIStore((s) => s.navigate);
   const setPendingPayment = useBookingStore((s) => s.setPendingPayment);
+  const restoreFromSnapshot = useBookingStore((s) => s.restoreFromSnapshot);
+  const setGroupItems = useBookingStore((s) => s.setGroupItems);
+  const setGroupResult = useBookingStore((s) => s.setGroupResult);
   const result = useBookingStore((s) => s.result);
   const tenantId = useGuestAuthStore((s) => s.tenantId);
 
@@ -98,6 +101,28 @@ export function PaymentResultPage() {
     let pollTimer: number | null = null;
     let forceSyncCount = 0;
 
+    // Success hand-off to /confirmation. The Peach redirect wiped the
+    // in-memory Zustand store, so before we clear the localStorage snapshot
+    // and navigate we must rehydrate the store from it — otherwise the
+    // confirmation page has no dates/result and its guard bounces the guest
+    // to Home right after a successful payment.
+    function goToConfirmation() {
+      if (ref!.snapshot) restoreFromSnapshot(ref!.snapshot);
+      if (ref!.groupSnapshot) {
+        setGroupItems(ref!.groupSnapshot.items);
+        setGroupResult({
+          groupId: ref!.groupSnapshot.groupId,
+          reservationIds: ref!.groupSnapshot.reservationIds,
+          folioId: ref!.groupSnapshot.folioId,
+          nightCount: ref!.snapshot?.nightCount ?? 0,
+          totalRoomCharges: ref!.snapshot?.totalRoomCharges ?? 0,
+        });
+      }
+      clearPendingFromStorage();
+      setPendingPayment(null);
+      setTimeout(() => navigate("/confirmation"), 1200);
+    }
+
     // Firestore listener for fast local updates once sync flips the doc.
     const unsub = watchPaymentIntent(
       tid,
@@ -107,9 +132,7 @@ export function PaymentResultPage() {
         if (cancelled) return;
         setIntent(updated);
         if (updated?.status === PaymentIntentStatus.SUCCEEDED) {
-          clearPendingFromStorage();
-          setPendingPayment(null);
-          setTimeout(() => navigate("/confirmation"), 1200);
+          goToConfirmation();
         }
       },
     );
@@ -133,9 +156,7 @@ export function PaymentResultPage() {
         if (cancelled) return;
         if (res.terminal) {
           if (res.status === PaymentIntentStatus.SUCCEEDED) {
-            clearPendingFromStorage();
-            setPendingPayment(null);
-            setTimeout(() => navigate("/confirmation"), 1200);
+            goToConfirmation();
           }
           return;
         }
@@ -156,7 +177,14 @@ export function PaymentResultPage() {
       if (pollTimer) window.clearTimeout(pollTimer);
       window.clearTimeout(t);
     };
-  }, [tenantId, navigate, setPendingPayment]);
+  }, [
+    tenantId,
+    navigate,
+    setPendingPayment,
+    restoreFromSnapshot,
+    setGroupItems,
+    setGroupResult,
+  ]);
 
   if (missing) {
     return (
@@ -279,7 +307,36 @@ export function PaymentResultPage() {
             </button>
           </div>
         </>
-      ) : null}
+      ) : (
+        <>
+          <h1 className="mb-3 font-display text-2xl font-semibold text-foreground">
+            {status === PaymentIntentStatus.REFUNDED ||
+            status === PaymentIntentStatus.PARTIALLY_REFUNDED
+              ? "This payment was refunded"
+              : "Checking your payment…"}
+          </h1>
+          <p className="mb-6 text-sm text-muted-foreground">
+            {status === PaymentIntentStatus.REFUNDED ||
+            status === PaymentIntentStatus.PARTIALLY_REFUNDED
+              ? "Your payment has been refunded. If you didn't request this, please contact us."
+              : "We're still confirming this transaction with the payment provider."}
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <button
+              onClick={() => navigate("/my-bookings")}
+              className="rounded-xl bg-accent px-6 py-2.5 text-sm font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark hover:shadow-card"
+            >
+              View my bookings
+            </button>
+            <button
+              onClick={() => navigate("/")}
+              className="rounded-xl border border-border bg-surface px-6 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+            >
+              Back to Home
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

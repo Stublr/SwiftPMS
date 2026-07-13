@@ -50,6 +50,17 @@ export const processPayment = onCall({ cors: true }, async (request) => {
 
       const newTotalPayments = addCents(folio.totalPayments as number, data.amount);
       const newBalance = subtractCents(folio.totalCharges as number, newTotalPayments);
+      // Reject overpayment. Recording more than the outstanding balance
+      // (e.g. the tendered cash instead of the amount due) silently clamps
+      // the folio balance to 0 while totalPayments keeps the inflated figure,
+      // producing a phantom cash-up shortage and an untracked guest credit.
+      // The Peach checkout path already guards this; mirror it here for the
+      // manual cash/card path. Cash change must be handled outside the folio.
+      if (newBalance < 0) {
+        throw preconditionFailed(
+          "Payment amount exceeds the outstanding balance. Enter the amount due; hand back any change separately.",
+        );
+      }
       // Un-void: if a hold-expired folio (status = "void") now takes a
       // payment, it needs to transition back to "open" or "settled" so
       // the money is properly reflected. Balance drives the choice.
@@ -112,7 +123,11 @@ export const processPayment = onCall({ cors: true }, async (request) => {
       if (resR && resSnap?.exists) {
         const resData = resSnap.data()!;
         const resStatus = resData.status as string;
-        if (resStatus === "cancelled") {
+        // Only reinstate a cancelled reservation once the folio is fully
+        // settled by this payment. A partial payment (e.g. a small deposit)
+        // must NOT flip the reservation back to confirmed and re-hold the
+        // room — that would pull an unpaid room off the market.
+        if (resStatus === "cancelled" && newStatus === "settled") {
           // Can we reinstate? The room must still be free (available OR
           // pointing at this reservation as its current, which shouldn't
           // happen post-release but is a defensive OK).

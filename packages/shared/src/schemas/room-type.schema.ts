@@ -5,6 +5,11 @@ const pricingTierSchema = z.object({
   basePersonCount: z.number().int().min(1),
   extraAdult: z.number().int().min(0),
   extraChild: z.number().int().min(0),
+  // Optional pensioner (senior) per-person rate. Must be declared here or Zod
+  // strips it on validated writes, leaving calculateTieredNightlyRate to fall
+  // back to the adult rate and silently overcharging seniors. Optional so it's
+  // backwards-compatible with existing room types that never set it.
+  extraSenior: z.number().int().min(0).optional(),
 });
 
 const peakRangeSchema = z.object({

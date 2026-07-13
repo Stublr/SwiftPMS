@@ -10,24 +10,20 @@ function getPath() {
 }
 
 export async function getGuests(searchTerm?: string): Promise<Guest[]> {
-  const { tenantId, propertyId } = getPath();
+  const { tenantId } = getPath();
 
-  // Get guest IDs that have reservations at the current property
-  const resSnap = await getDocs(
-    collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`),
-  );
-  const propertyGuestIds = new Set(resSnap.docs.map((d) => d.data().guestId as string));
-
-  // Get all guests for the tenant
+  // Guests are stored at the tenant level (not per-property), so list the
+  // whole tenant roster. Previously this was filtered to only guest IDs that
+  // already had a reservation at the current property, which meant a guest
+  // created via "Add Guest" (who has no reservation yet) disappeared from the
+  // list and couldn't be found or edited.
   const snap = await getDocs(collection(db, `tenants/${tenantId}/guests`));
-  let guests = snap.docs
-    .filter((d) => propertyGuestIds.has(d.id))
-    .map((d) => ({
-      id: d.id,
-      tenantId,
-      companions: [],
-      ...d.data(),
-    }) as unknown as Guest);
+  let guests = snap.docs.map((d) => ({
+    id: d.id,
+    tenantId,
+    companions: [],
+    ...d.data(),
+  }) as unknown as Guest);
 
   if (searchTerm) {
     const term = searchTerm.toLowerCase();

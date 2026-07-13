@@ -165,14 +165,17 @@ export function CheckInPage() {
   }
 
   async function handleCheckIn() {
-    if (!reservation) return;
+    if (!reservation || !target) return;
     setCheckingIn(true);
     setError(null);
     try {
       const fn = httpsCallable(functions, "checkIn");
+      // Reservation docs don't persist propertyId — it lives in the doc path,
+      // carried here by the QR deep-link target. Using reservation.propertyId
+      // (undefined) would make the callable reject "propertyId is required".
       await fn({
         reservationId: reservation.id,
-        propertyId: reservation.propertyId,
+        propertyId: target.propertyId,
       });
       // Reload to reflect new status
       if (target) await loadReservation(target);
@@ -216,7 +219,7 @@ export function CheckInPage() {
     const failures: string[] = [];
     for (const res of toCheckIn) {
       try {
-        await fn({ reservationId: res.id, propertyId: res.propertyId });
+        await fn({ reservationId: res.id, propertyId: target.propertyId });
       } catch (err) {
         failures.push(
           `${res.id.slice(0, 8).toUpperCase()}: ${err instanceof Error ? err.message : "failed"}`,

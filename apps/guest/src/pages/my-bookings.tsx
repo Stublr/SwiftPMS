@@ -20,6 +20,7 @@ export function MyBookingsPage() {
   const navigate = useUIStore((s) => s.navigate);
   const isAuthenticated = useGuestAuthStore((s) => s.isAuthenticated);
   const firstName = useGuestAuthStore((s) => s.firstName);
+  const lastName = useGuestAuthStore((s) => s.lastName);
 
   const [bookings, setBookings] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +84,7 @@ export function MyBookingsPage() {
 
     downloadBookingPdf({
       reservation: booking,
-      guestName: firstName ?? "Guest",
+      guestName: [firstName, lastName].filter(Boolean).join(" ") || "Guest",
       guestEmail: useGuestAuthStore.getState().email ?? "",
       propertyName: prop?.name,
       propertyAddress: prop?.address ?? undefined,
