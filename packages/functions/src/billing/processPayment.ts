@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { addCents, subtractCents } from "@swiftpms/shared";
 import { processPaymentSchema } from "@swiftpms/shared";
 
-import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
+import { badRequest, forbidden, notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
 import { db, folioRef, reservationRef, roomRef } from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
@@ -12,6 +12,12 @@ import { validateRequest } from "../lib/validation.js";
 export const processPayment = onCall({ cors: true }, async (request) => {
   try {
     if (!request.auth) throw unauthorized();
+    // Recording payments against a folio is a staff-only till operation.
+    // Without this gate any signed-in guest could settle their own (or
+    // another guest's) folio to zero and check in without paying.
+    if (request.auth.token.role === "guest") {
+      throw forbidden("Guests cannot record folio payments.");
+    }
 
     const tenantId = request.auth.token.tenantId as string;
     const propertyId = request.data.propertyId as string;
@@ -33,6 +39,17 @@ export const processPayment = onCall({ cors: true }, async (request) => {
       // reservation state.
       if (folio.status === "settled" || folio.status === "refunded") {
         throw preconditionFailed(`Folio is already ${folio.status}`);
+      }
+
+      // Reject overpayment. We don't track credit balances, so a payment
+      // larger than the outstanding balance would be silently clamped to a
+      // zero balance and the excess lost. Mirror the card path
+      // (initiatePeachCheckout) which already rejects amount > balance.
+      const currentBalance = folio.balance as number;
+      if (data.amount > currentBalance) {
+        throw badRequest(
+          `Payment of ${data.amount} exceeds the outstanding balance of ${currentBalance}`,
+        );
       }
 
       // Idempotency — bail if we've already processed this clientRequestId.
@@ -112,7 +129,10 @@ export const processPayment = onCall({ cors: true }, async (request) => {
       if (resR && resSnap?.exists) {
         const resData = resSnap.data()!;
         const resStatus = resData.status as string;
-        if (resStatus === "cancelled") {
+        if (resStatus === "cancelled" && newStatus === "settled") {
+          // Only reinstate a cancelled reservation when this payment fully
+          // settles the folio. A trivial partial payment must NOT re-grab
+          // inventory or resurrect a deliberately-cancelled booking.
           // Can we reinstate? The room must still be free (available OR
           // pointing at this reservation as its current, which shouldn't
           // happen post-release but is a defensive OK).

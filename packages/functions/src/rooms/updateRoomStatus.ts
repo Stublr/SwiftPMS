@@ -3,7 +3,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { updateRoomStatusSchema } from "@swiftpms/shared";
 
-import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
+import { forbidden, notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
 import { roomRef } from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
@@ -11,6 +11,12 @@ import { validateRequest } from "../lib/validation.js";
 export const updateRoomStatus = onCall({ cors: true }, async (request) => {
   try {
     if (!request.auth) throw unauthorized();
+    // Changing room status is a staff-only operation. A guest could
+    // otherwise flip an occupied room to available (enabling a double-book)
+    // or set rooms to maintenance to sabotage inventory.
+    if (request.auth.token.role === "guest") {
+      throw forbidden("Guests cannot change room status.");
+    }
 
     const tenantId = request.auth.token.tenantId as string;
     const propertyId = request.data.propertyId as string;

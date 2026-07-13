@@ -9,7 +9,7 @@ import {
 } from "@swiftpms/shared";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
-import { db, reservationsRef, foliosRef, roomRef, roomTypeRef, guestRef } from "../lib/firestore.js";
+import { db, reservationsRef, foliosRef, roomRef, roomsRef, roomTypeRef, guestRef } from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
 import { createReservationSchema } from "@swiftpms/shared";
@@ -81,6 +81,38 @@ export const createReservation = onCall({ cors: true }, async (request) => {
         if (conflict) {
           throw preconditionFailed(
             `Room already has a ${conflict.data().status} reservation overlapping these dates`,
+          );
+        }
+      } else {
+        // No specific room requested (auto-assign at check-in — the default
+        // for the New Reservation form and ALL walk-ins). Enforce type-level
+        // capacity here, otherwise there is NO availability check at all and
+        // the property silently overbooks: two bookings for the last site of
+        // a type both succeed and take payment, and the second fails only at
+        // check-in — after the money is collected.
+        const activeRooms = await tx.get(
+          roomsRef(tenantId, propertyId)
+            .where("roomTypeId", "==", data.roomTypeId)
+            .where("isActive", "==", true),
+        );
+        const capacity = activeRooms.size;
+
+        const typeReservations = await tx.get(
+          reservationsRef(tenantId, propertyId)
+            .where("roomTypeId", "==", data.roomTypeId)
+            .where("status", "in", ["confirmed", "checked_in"]),
+        );
+        const overlappingCount = typeReservations.docs.filter((d) => {
+          const r = d.data();
+          return (
+            (r.checkInDate as string) < data.checkOutDate &&
+            (r.checkOutDate as string) > data.checkInDate
+          );
+        }).length;
+
+        if (overlappingCount >= capacity) {
+          throw preconditionFailed(
+            "No rooms of this type are available for the selected dates",
           );
         }
       }

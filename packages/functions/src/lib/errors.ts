@@ -30,11 +30,20 @@ export function preconditionFailed(message = "Precondition failed"): HttpsError 
 
 /**
  * Wraps an async function handler to catch errors and rethrow as HttpsError.
+ *
+ * HttpsErrors (which we throw deliberately with safe, user-facing messages)
+ * pass through unchanged. Any OTHER error — a Firestore failure, a provider
+ * SDK error, a bug — is logged server-side for debugging but returned to the
+ * client as a generic message so we never leak internal details (stack
+ * traces, payment-provider reasons, document paths) to callers.
  */
 export function wrapError(err: unknown): never {
   if (err instanceof HttpsError) {
     throw err;
   }
-  const message = err instanceof Error ? err.message : "Unknown error";
-  throw new HttpsError("internal" as FunctionsErrorCode, message);
+  console.error("Unhandled function error:", err);
+  throw new HttpsError(
+    "internal" as FunctionsErrorCode,
+    "An unexpected error occurred. Please try again.",
+  );
 }

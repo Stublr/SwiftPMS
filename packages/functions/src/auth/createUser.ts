@@ -68,7 +68,7 @@ export const createUser = onCall({ cors: true }, async (request) => {
       userEmail: request.auth.token.email ?? "",
       tenantId,
       details: { email: data.email, role: data.role },
-    });
+    }).catch(() => {});
 
     return {
       id: userRecord.uid,

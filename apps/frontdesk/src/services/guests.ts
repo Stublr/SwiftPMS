@@ -10,24 +10,21 @@ function getPath() {
 }
 
 export async function getGuests(searchTerm?: string): Promise<Guest[]> {
-  const { tenantId, propertyId } = getPath();
+  const { tenantId } = getPath();
 
-  // Get guest IDs that have reservations at the current property
-  const resSnap = await getDocs(
-    collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`),
-  );
-  const propertyGuestIds = new Set(resSnap.docs.map((d) => d.data().guestId as string));
-
-  // Get all guests for the tenant
+  // Guests are stored per-TENANT (tenants/{t}/guests), not per-property, and
+  // a freshly-created walk-in guest has no reservation yet. The previous
+  // implementation filtered the list down to only guests who already had a
+  // reservation at the current property, so a just-added guest silently
+  // disappeared (looked like the save failed). Return the full tenant guest
+  // list instead.
   const snap = await getDocs(collection(db, `tenants/${tenantId}/guests`));
-  let guests = snap.docs
-    .filter((d) => propertyGuestIds.has(d.id))
-    .map((d) => ({
-      id: d.id,
-      tenantId,
-      companions: [],
-      ...d.data(),
-    }) as unknown as Guest);
+  let guests = snap.docs.map((d) => ({
+    id: d.id,
+    tenantId,
+    companions: [],
+    ...d.data(),
+  }) as unknown as Guest);
 
   if (searchTerm) {
     const term = searchTerm.toLowerCase();

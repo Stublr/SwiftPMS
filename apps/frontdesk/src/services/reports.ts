@@ -90,8 +90,14 @@ export async function getDailyAggregates(
         roomRevenue += nightly;
       }
     }
+    // Cap at 100%: historical rooms use the CURRENT active-room count as the
+    // denominator, and an over-booked day (two reservations, one room) can
+    // push occupiedRooms above totalRooms — which would otherwise report a
+    // nonsensical >100% rate and skew the average/peak occupancy figures.
     const occupancyRate =
-      totalRooms > 0 ? Math.round((occupiedRooms / totalRooms) * 100) : 0;
+      totalRooms > 0
+        ? Math.min(100, Math.round((occupiedRooms / totalRooms) * 100))
+        : 0;
     rows.push({
       date: day,
       totalRooms,

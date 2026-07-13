@@ -12,6 +12,7 @@ import {
 import { writeAuditLog } from "../lib/audit.js";
 import {
   badRequest,
+  forbidden,
   notFound,
   preconditionFailed,
   unauthorized,
@@ -92,6 +93,7 @@ export const initiatePeachCheckout = onCall(
 
       // Resolve reservation + folio if provided; validate amount against folio balance.
       let folioData: FirebaseFirestore.DocumentData | null = null;
+      const isGuest = request.auth.token.role === "guest";
 
       if (data.reservationId) {
         const resSnap = await reservationRef(
@@ -100,6 +102,10 @@ export const initiatePeachCheckout = onCall(
           data.reservationId,
         ).get();
         if (!resSnap.exists) throw notFound("Reservation not found");
+        // Ownership gate: a guest may only pay for their own reservation.
+        if (isGuest && resSnap.data()?.guestId !== request.auth.uid) {
+          throw forbidden("You can only pay for your own reservation.");
+        }
       }
 
       if (data.folioId) {
@@ -110,6 +116,10 @@ export const initiatePeachCheckout = onCall(
         ).get();
         if (!folioSnap.exists) throw notFound("Folio not found");
         folioData = folioSnap.data() ?? null;
+        // Ownership gate: a guest may only pay for their own folio.
+        if (isGuest && folioData?.guestId !== request.auth.uid) {
+          throw forbidden("You can only pay for your own folio.");
+        }
         if (folioData?.status !== "open") {
           throw preconditionFailed("Folio is not open");
         }
@@ -119,6 +129,20 @@ export const initiatePeachCheckout = onCall(
             `Amount ${data.amount} exceeds folio balance ${balance}`,
           );
         }
+        // Guest-booking payments must settle the folio in full. A partial
+        // capture leaves the folio "open", so releaseExpiredHolds later
+        // cancels the booking and voids the folio — stranding a captured
+        // payment while the guest was told they were "confirmed".
+        if (
+          data.purpose === PaymentIntentPurpose.GUEST_BOOKING &&
+          data.amount !== balance
+        ) {
+          throw badRequest("Guest bookings must be paid in full.");
+        }
+      } else if (data.purpose === PaymentIntentPurpose.GUEST_BOOKING) {
+        // A guest booking with no folio has no balance to validate against —
+        // reject so an arbitrary amount can't originate a guest checkout.
+        throw badRequest("Guest booking payments require a folio.");
       }
 
       const paymentType = data.paymentType ?? "DB";

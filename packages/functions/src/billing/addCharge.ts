@@ -4,7 +4,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { addCents, multiplyCents } from "@swiftpms/shared";
 import { addChargeSchema } from "@swiftpms/shared";
 
-import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
+import { forbidden, notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
 import { db, folioRef } from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
@@ -12,6 +12,10 @@ import { validateRequest } from "../lib/validation.js";
 export const addCharge = onCall({ cors: true }, async (request) => {
   try {
     if (!request.auth) throw unauthorized();
+    // Posting charges to a folio is a staff-only operation.
+    if (request.auth.token.role === "guest") {
+      throw forbidden("Guests cannot post charges to a folio.");
+    }
 
     const tenantId = request.auth.token.tenantId as string;
     const propertyId = request.data.propertyId as string;

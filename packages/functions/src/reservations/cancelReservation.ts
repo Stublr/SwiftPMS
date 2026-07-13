@@ -1,7 +1,7 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
-import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
+import { forbidden, notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
 import {
   db,
   folioRef,
@@ -32,6 +32,16 @@ export const cancelReservation = onCall({ cors: true }, async (request) => {
     const preSnap = await resRefDoc.get();
     if (!preSnap.exists) throw notFound("Reservation not found");
     const preData = preSnap.data()!;
+    // Ownership gate: a guest may only cancel their OWN reservation. Staff
+    // (any non-guest role) may cancel any reservation in the tenant.
+    // Without this, reservation IDs (which leak in confirmation QR URLs) let
+    // any guest cancel another guest's paid booking.
+    if (
+      request.auth.token.role === "guest" &&
+      preData.guestId !== request.auth.uid
+    ) {
+      throw forbidden("You can only cancel your own reservation.");
+    }
     const preGroupId = preData.groupId as string | undefined;
     const preFolioIdOnRes = preData.folioId as string | undefined;
 

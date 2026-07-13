@@ -79,6 +79,11 @@ export const closeShift = onCall({ cors: true }, async (request) => {
       const folio = folioDoc.data();
       const payments = (folio.payments as Array<Record<string, unknown>> | undefined) ?? [];
       for (const p of payments) {
+        // Legacy-imported payments (money collected by the PREVIOUS operator
+        // before takeover) carry `legacy: true`. They must never count toward
+        // this till's expected cash, or importing a paid legacy booking mid-
+        // shift reports a false drawer shortage.
+        if (p.legacy === true) continue;
         const processedAt = p.processedAt as string | undefined;
         if (!processedAt) continue;
         if (processedAt >= openedAtIso && processedAt < nowIso) {

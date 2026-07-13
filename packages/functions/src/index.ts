@@ -2,6 +2,7 @@
 export { createUser } from "./auth/createUser.js";
 export { pinLogin } from "./auth/pinLogin.js";
 export { assignUserRole } from "./auth/assignUserRole.js";
+export { resetUserPin } from "./auth/resetUserPin.js";
 
 // Reservation functions
 export { createReservation } from "./reservations/createReservation.js";

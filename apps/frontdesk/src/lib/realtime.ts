@@ -27,7 +27,13 @@ export function onTodayReservations(callback: (reservations: Reservation[]) => v
   const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`);
   const q = query(colRef, where("checkInDate", "==", today), orderBy("createdAt", "desc"));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation));
+    callback(
+      snap.docs
+        .map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation)
+        // Cancelled / no-show bookings are not arrivals — excluding them keeps
+        // the dashboard's "Today's Arrivals" count honest.
+        .filter((r) => r.status !== "cancelled" && r.status !== "no_show"),
+    );
   }, () => callback([]));
 }
 
@@ -37,7 +43,12 @@ export function onTodayDepartures(callback: (reservations: Reservation[]) => voi
   const colRef = collection(db, `tenants/${tenantId}/properties/${propertyId}/reservations`);
   const q = query(colRef, where("checkOutDate", "==", today), orderBy("createdAt", "desc"));
   return onSnapshot(q, (snap) => {
-    callback(snap.docs.map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation));
+    callback(
+      snap.docs
+        .map((d) => ({ id: d.id, propertyId, ...d.data() }) as Reservation)
+        // Cancelled / no-show bookings are not real departures.
+        .filter((r) => r.status !== "cancelled" && r.status !== "no_show"),
+    );
   }, () => callback([]));
 }
 

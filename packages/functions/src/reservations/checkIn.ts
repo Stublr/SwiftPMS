@@ -2,7 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import { forbidden, notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
-import { db, reservationRef, roomRef, roomsRef } from "../lib/firestore.js";
+import { db, reservationRef, reservationsRef, roomRef, roomsRef } from "../lib/firestore.js";
 import { writeAuditLog } from "../lib/audit.js";
 import { validateRequest } from "../lib/validation.js";
 import { checkInSchema } from "@swiftpms/shared";
@@ -30,6 +30,20 @@ export const checkIn = onCall({ cors: true }, async (request) => {
       throw preconditionFailed("Reservation must be confirmed to check in");
     }
 
+    // Guard against checking in a clearly-future booking. The reservations
+    // list renders an unconditional "Check In" button on every confirmed row,
+    // and the backend previously accepted it — letting staff flip a room to
+    // occupied months early. Allow a one-day tolerance so a timezone offset
+    // near midnight can't false-block a legitimate same-day check-in.
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0]!;
+    if ((resData.checkInDate as string) > tomorrow) {
+      throw preconditionFailed(
+        "Cannot check in before the reservation's check-in date",
+      );
+    }
+
     let assignedRoomId = data.roomId ?? (resData.roomId as string | null);
 
     if (!assignedRoomId) {
@@ -44,6 +58,28 @@ export const checkIn = onCall({ cors: true }, async (request) => {
         throw preconditionFailed("No available rooms of this type");
       }
       assignedRoomId = availRooms.docs[0]!.id;
+    }
+
+    // Overlap guard: the target room must not already be committed to a
+    // DIFFERENT reservation whose dates overlap this stay. Without this, a
+    // manually- or QR-supplied roomId that is `reserved` for someone else
+    // passes the status check below and silently clobbers their assignment.
+    const overlapSnap = await reservationsRef(tenantId, propertyId)
+      .where("roomId", "==", assignedRoomId)
+      .where("status", "in", ["confirmed", "checked_in"])
+      .get();
+    const clash = overlapSnap.docs.find((d) => {
+      if (d.id === data.reservationId) return false;
+      const r = d.data();
+      return (
+        (r.checkInDate as string) < (resData.checkOutDate as string) &&
+        (r.checkOutDate as string) > (resData.checkInDate as string)
+      );
+    });
+    if (clash) {
+      throw preconditionFailed(
+        "That room is already assigned to an overlapping reservation",
+      );
     }
 
     // Transaction: re-validate and perform atomic updates
