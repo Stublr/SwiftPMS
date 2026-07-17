@@ -108,6 +108,7 @@ export const checkAvailability = onCall({ cors: true }, async (request) => {
           description: rt.description as string | null,
           baseRate: rt.baseRate as number,
           tieredPricing: (rt.tieredPricing as unknown) ?? null,
+          ratePeriods: (rt.ratePeriods as unknown) ?? null,
           maxOccupancy: rt.maxOccupancy as number,
           bedConfiguration: rt.bedConfiguration as string,
           amenities: (rt.amenities as string[]) ?? [],
