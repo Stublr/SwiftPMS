@@ -31,6 +31,13 @@ export interface TieredPricing {
   peakRanges: { start: string; end: string }[];
 }
 
+export interface RatePeriod {
+  id: string; name: string;
+  start: string; end: string;      // inclusive YYYY-MM-DD, same shape as peakRanges
+  baseRate?: number;               // cents — override for flat room types
+  tier?: PricingTier;              // override for tiered room types
+}
+
 export interface RoomType {
   id: string;
   tenantId: string;
@@ -49,6 +56,7 @@ export interface RoomType {
    * structure instead of `baseRate * nights`.
    */
   tieredPricing?: TieredPricing;
+  ratePeriods?: RatePeriod[];
   maxOccupancy: number;
   bedConfiguration: string;
   amenities: string[];
@@ -64,6 +72,7 @@ export interface CreateRoomTypeRequest {
   description?: string;
   baseRate: number;
   tieredPricing?: TieredPricing;
+  ratePeriods?: RatePeriod[];
   maxOccupancy: number;
   bedConfiguration: string;
   amenities?: string[];
@@ -75,6 +84,7 @@ export interface UpdateRoomTypeRequest {
   description?: string;
   baseRate?: number;
   tieredPricing?: TieredPricing | null;
+  ratePeriods?: RatePeriod[] | null;
   maxOccupancy?: number;
   bedConfiguration?: string;
   amenities?: string[];
