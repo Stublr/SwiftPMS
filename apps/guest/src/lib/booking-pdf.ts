@@ -188,7 +188,14 @@ async function buildSection(
   const nights = nightCount(r.checkInDate, r.checkOutDate);
   const refId = r.id.slice(0, 8).toUpperCase();
   const total = formatCents(r.totalRoomCharges);
-  const rate = formatCents(r.roomRate);
+  // Effective per-night rate derived from the (possibly discounted) total so
+  // it always reconciles with the totals/VAT lines — r.roomRate is the gross
+  // nightly rate and would disagree for tour-operator bookings.
+  const rate = formatCents(
+    nights > 0 && r.totalRoomCharges > 0
+      ? Math.round(r.totalRoomCharges / nights)
+      : r.roomRate,
+  );
   const ci = fmtDate(r.checkInDate);
   const co = fmtDate(r.checkOutDate);
   const ciTime = checkInTime ?? "14:00";
