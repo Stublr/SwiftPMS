@@ -17,6 +17,7 @@ const adminNavItems = [
   { label: "Properties", path: "/admin/properties", icon: "P" },
   { label: "Room Setup", path: "/admin/rooms", icon: "S" },
   { label: "Staff", path: "/admin/users", icon: "U" },
+  { label: "Tour Operators", path: "/tour-operators", icon: "T" },
 ];
 
 // A scanner has no use for the full PMS nav -- just a way back to the scanner.
