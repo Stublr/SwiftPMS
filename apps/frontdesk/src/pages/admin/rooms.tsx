@@ -1,4 +1,4 @@
-import { formatCents, type Room, type RoomType } from "@swiftpms/shared";
+import { formatCents, type Room, type RoomType, type RatePeriod } from "@swiftpms/shared";
 import { useEffect, useState } from "react";
 
 import {
@@ -642,6 +642,234 @@ function RoomTypesList() {
   );
 }
 
+interface RatePeriodRow {
+  id: string;
+  name: string;
+  start: string;
+  end: string;
+  mode: "flat" | "tier";
+  baseRate: string; // R — flat rate override, or tier base rate when mode is "tier"
+  basePersonCount: string;
+  extraAdult: string;
+  extraChild: string;
+  extraSenior: string;
+}
+
+function ratePeriodsToRows(periods: RatePeriod[] | undefined): RatePeriodRow[] {
+  return (periods ?? []).map((p) => {
+    if (p.tier) {
+      return {
+        id: p.id,
+        name: p.name,
+        start: p.start,
+        end: p.end,
+        mode: "tier",
+        baseRate: (p.tier.baseRate / 100).toFixed(2),
+        basePersonCount: String(p.tier.basePersonCount),
+        extraAdult: (p.tier.extraAdult / 100).toFixed(2),
+        extraChild: (p.tier.extraChild / 100).toFixed(2),
+        extraSenior: p.tier.extraSenior != null ? (p.tier.extraSenior / 100).toFixed(2) : "",
+      };
+    }
+    return {
+      id: p.id,
+      name: p.name,
+      start: p.start,
+      end: p.end,
+      mode: "flat",
+      baseRate: p.baseRate != null ? (p.baseRate / 100).toFixed(2) : "",
+      basePersonCount: "",
+      extraAdult: "",
+      extraChild: "",
+      extraSenior: "",
+    };
+  });
+}
+
+function rowsToRatePeriods(rows: RatePeriodRow[]): RatePeriod[] {
+  return rows
+    .filter((r) => r.name.trim() && r.start && r.end)
+    .map((r) => {
+      if (r.mode === "tier") {
+        return {
+          id: r.id,
+          name: r.name.trim(),
+          start: r.start,
+          end: r.end,
+          tier: {
+            baseRate: Math.round(parseFloat(r.baseRate || "0") * 100),
+            basePersonCount: parseInt(r.basePersonCount) || 1,
+            extraAdult: Math.round(parseFloat(r.extraAdult || "0") * 100),
+            extraChild: Math.round(parseFloat(r.extraChild || "0") * 100),
+            ...(r.extraSenior ? { extraSenior: Math.round(parseFloat(r.extraSenior) * 100) } : {}),
+          },
+        };
+      }
+      return {
+        id: r.id,
+        name: r.name.trim(),
+        start: r.start,
+        end: r.end,
+        baseRate: r.baseRate ? Math.round(parseFloat(r.baseRate) * 100) : undefined,
+      };
+    });
+}
+
+function RatePeriodEditor({
+  rows,
+  onChange,
+}: {
+  rows: RatePeriodRow[];
+  onChange: (rows: RatePeriodRow[]) => void;
+}) {
+  function updateRow(id: string, patch: Partial<RatePeriodRow>) {
+    onChange(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+  }
+
+  function addRow() {
+    onChange([
+      ...rows,
+      {
+        id: crypto.randomUUID(),
+        name: "",
+        start: "",
+        end: "",
+        mode: "flat",
+        baseRate: "",
+        basePersonCount: "",
+        extraAdult: "",
+        extraChild: "",
+        extraSenior: "",
+      },
+    ]);
+  }
+
+  function removeRow(id: string) {
+    onChange(rows.filter((r) => r.id !== id));
+  }
+
+  return (
+    <div>
+      <label className="block text-sm font-medium">Rate periods</label>
+      <p className="mt-1 text-xs text-muted-foreground">
+        Date-range overrides (e.g. peak season). Choose a flat nightly rate override, or a
+        per-person tier override for tiered-pricing room types.
+      </p>
+      <div className="mt-2 space-y-3">
+        {rows.map((row) => (
+          <div key={row.id} className="rounded-md border border-border p-3">
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="text"
+                value={row.name}
+                onChange={(e) => updateRow(row.id, { name: e.target.value })}
+                placeholder="e.g., Peak Season"
+                className="rounded-md border border-border px-3 py-2 text-sm"
+              />
+              <select
+                value={row.mode}
+                onChange={(e) => updateRow(row.id, { mode: e.target.value as "flat" | "tier" })}
+                className="rounded-md border border-border px-3 py-2 text-sm"
+              >
+                <option value="flat">Flat rate override</option>
+                <option value="tier">Per-person tier override</option>
+              </select>
+              <input
+                type="date"
+                value={row.start}
+                onChange={(e) => updateRow(row.id, { start: e.target.value })}
+                className="rounded-md border border-border px-3 py-2 text-sm"
+              />
+              <input
+                type="date"
+                value={row.end}
+                onChange={(e) => updateRow(row.id, { end: e.target.value })}
+                className="rounded-md border border-border px-3 py-2 text-sm"
+              />
+            </div>
+
+            {row.mode === "flat" ? (
+              <div className="mt-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={row.baseRate}
+                  onChange={(e) => updateRow(row.id, { baseRate: e.target.value })}
+                  placeholder="Rate (R), optional — falls back to base rate"
+                  className="w-full rounded-md border border-border px-3 py-2 text-sm"
+                />
+              </div>
+            ) : (
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={row.baseRate}
+                  onChange={(e) => updateRow(row.id, { baseRate: e.target.value })}
+                  placeholder="Base rate (R)"
+                  className="rounded-md border border-border px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  min="1"
+                  value={row.basePersonCount}
+                  onChange={(e) => updateRow(row.id, { basePersonCount: e.target.value })}
+                  placeholder="Base person count"
+                  className="rounded-md border border-border px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={row.extraAdult}
+                  onChange={(e) => updateRow(row.id, { extraAdult: e.target.value })}
+                  placeholder="R/extra adult"
+                  className="rounded-md border border-border px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={row.extraChild}
+                  onChange={(e) => updateRow(row.id, { extraChild: e.target.value })}
+                  placeholder="R/extra child"
+                  className="rounded-md border border-border px-3 py-2 text-sm"
+                />
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={row.extraSenior}
+                  onChange={(e) => updateRow(row.id, { extraSenior: e.target.value })}
+                  placeholder="R/pensioner, optional"
+                  className="col-span-2 rounded-md border border-border px-3 py-2 text-sm"
+                />
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => removeRow(row.id)}
+              className="mt-2 text-xs text-destructive hover:underline"
+            >
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={addRow}
+        className="mt-2 rounded-md border border-border px-3 py-1.5 text-xs font-medium hover:bg-secondary"
+      >
+        Add rate period
+      </button>
+    </div>
+  );
+}
+
 function RoomTypeForm({
   onSave,
   onCancel,
@@ -658,6 +886,7 @@ function RoomTypeForm({
     bedConfiguration: "",
     amenities: "",
   });
+  const [ratePeriods, setRatePeriods] = useState<RatePeriodRow[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -678,6 +907,7 @@ function RoomTypeForm({
         maxOccupancy: form.maxOccupancy,
         bedConfiguration: form.bedConfiguration,
         amenities: form.amenities ? form.amenities.split(",").map((a) => a.trim()) : [],
+        ratePeriods: rowsToRatePeriods(ratePeriods),
       });
     } catch {
       setError("Failed to create room type");
@@ -776,6 +1006,7 @@ function RoomTypeForm({
             className="mt-1 w-full rounded-md border border-border px-3 py-2 text-sm"
           />
         </div>
+        <RatePeriodEditor rows={ratePeriods} onChange={setRatePeriods} />
         <div className="flex gap-3">
           <button
             type="submit"
@@ -816,6 +1047,9 @@ function RoomTypeEditForm({
     amenities: roomType.amenities.join(", "),
     isActive: roomType.isActive,
   });
+  const [ratePeriods, setRatePeriods] = useState<RatePeriodRow[]>(
+    ratePeriodsToRows(roomType.ratePeriods),
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -833,6 +1067,7 @@ function RoomTypeEditForm({
         bedConfiguration: form.bedConfiguration,
         amenities: form.amenities ? form.amenities.split(",").map((a) => a.trim()) : [],
         isActive: form.isActive,
+        ratePeriods: rowsToRatePeriods(ratePeriods),
       });
     } catch {
       setError("Failed to update room type");
@@ -936,6 +1171,7 @@ function RoomTypeEditForm({
             Active
           </label>
         </div>
+        <RatePeriodEditor rows={ratePeriods} onChange={setRatePeriods} />
         <div className="flex gap-3">
           <button
             type="submit"
