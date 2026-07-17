@@ -35,6 +35,10 @@ export function guestRef(tenantId: string, guestId: string) {
   return db.doc(`tenants/${tenantId}/guests/${guestId}`);
 }
 
+export function tourOperatorsRef(tenantId: string) {
+  return tenantRef(tenantId).collection("tourOperators");
+}
+
 // --- Room Types ---
 
 export function roomTypesRef(tenantId: string) {

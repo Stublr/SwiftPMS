@@ -206,8 +206,8 @@ importers:
   packages/functions:
     dependencies:
       '@swiftpms/shared':
-        specifier: workspace:*
-        version: link:../shared
+        specifier: file:./swiftpms-shared-0.0.0.tgz
+        version: file:packages/functions/swiftpms-shared-0.0.0.tgz
       '@types/qrcode':
         specifier: ^1.5.6
         version: 1.5.6
@@ -1556,6 +1556,10 @@ packages:
 
   '@so-ric/colorspace@1.1.6':
     resolution: {integrity: sha512-/KiKkpHNOBgkFJwu9sh48LkHSMYGyuTcSFK/qMBdnOAlrRJzRSXAOFB5qwzaVQuDl8wAvHVMkaASQDReTahxuw==}
+
+  '@swiftpms/shared@file:packages/functions/swiftpms-shared-0.0.0.tgz':
+    resolution: {integrity: sha512-LETduuQaOu+2tFTsUuDAPHpcfFU88sLrK6GZhbFaGx/E9ZVNzf3pt1jxXD+etfpWnIPHClB0RselqzEPcx3g/Q==, tarball: file:packages/functions/swiftpms-shared-0.0.0.tgz}
+    version: 0.0.0
 
   '@tailwindcss/node@4.1.18':
     resolution: {integrity: sha512-DoR7U1P7iYhw16qJ49fgXUlry1t4CpXeErJHnQ44JgTSKMaZUdf17cfn5mHchfJ4KRBZRFA/Coo+MUF5+gOaCQ==}
@@ -6899,6 +6903,10 @@ snapshots:
     dependencies:
       color: 5.0.3
       text-hex: 1.0.0
+
+  '@swiftpms/shared@file:packages/functions/swiftpms-shared-0.0.0.tgz':
+    dependencies:
+      zod: 3.25.76
 
   '@tailwindcss/node@4.1.18':
     dependencies:

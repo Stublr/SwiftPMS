@@ -5,6 +5,7 @@ export const ChargeCategory = {
   MINIBAR: "minibar",
   LAUNDRY: "laundry",
   OTHER: "other",
+  DISCOUNT: "discount",
 } as const;
 
 export type ChargeCategory =

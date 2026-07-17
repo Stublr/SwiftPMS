@@ -10,9 +10,11 @@ export const createReservationSchema = z
     checkInDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
     checkOutDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
     adults: z.number().int().min(0),
-    children: z.number().int().min(0).default(0),
+    // nullish: the Firebase callable encoder turns client-side `undefined`
+    // into `null`, which .default() alone rejects.
+    children: z.number().int().min(0).nullish().transform((v) => v ?? 0),
     /** Pensioners (SA senior citizens, staff-verified). Priced at the tier's extraSenior rate. */
-    pensioners: z.number().int().min(0).default(0),
+    pensioners: z.number().int().min(0).nullish().transform((v) => v ?? 0),
     specialRequests: z.string().max(1000).nullish().transform((v) => v ?? undefined),
     // Optional client-generated idempotency token to dedupe retries.
     clientRequestId: z
@@ -48,7 +50,7 @@ export const createReservationGroupSchema = z
         z.object({
           roomTypeId: z.string().min(1),
           adults: z.number().int().min(1),
-          children: z.number().int().min(0).default(0),
+          children: z.number().int().min(0).nullish().transform((v) => v ?? 0),
         }),
       )
       .min(1, "At least one campsite is required")
@@ -94,9 +96,9 @@ export const createLegacyReservationSchema = z
     checkInDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
     checkOutDate: z.string().regex(dateRegex, "Must be YYYY-MM-DD"),
     adults: z.number().int().min(0),
-    children: z.number().int().min(0).default(0),
+    children: z.number().int().min(0).nullish().transform((v) => v ?? 0),
     /** Pensioners in the group (staff-verified). Priced per tier's extraSenior rate. */
-    pensioners: z.number().int().min(0).default(0),
+    pensioners: z.number().int().min(0).nullish().transform((v) => v ?? 0),
     /** Total from the original invoice (cents). Overrides tiered pricing. */
     totalRoomChargesCents: z.number().int().min(0),
     /** How much has already been paid on the old system (cents). 0 if nothing. */

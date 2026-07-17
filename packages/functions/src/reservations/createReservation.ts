@@ -3,9 +3,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import {
   calculateNights,
-  calculateTieredStayTotal,
-  multiplyCents,
-  type TieredPricing,
+  resolveStayPricing,
 } from "@swiftpms/shared";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
@@ -86,39 +84,33 @@ export const createReservation = onCall({ cors: true }, async (request) => {
       }
 
       const nightCount = calculateNights(data.checkInDate, data.checkOutDate);
-      const tiered = roomType.tieredPricing as TieredPricing | undefined;
       const adults = data.adults;
       const children = data.children ?? 0;
       const pensioners = data.pensioners ?? 0;
 
-      let roomRate: number;
-      let totalRoomCharges: number;
-      let chargeDescription: string;
-      if (tiered) {
-        const calc = calculateTieredStayTotal(
-          tiered,
-          data.checkInDate,
-          data.checkOutDate,
-          adults,
-          children,
-          pensioners,
-        );
-        roomRate = calc.nightlyRate;
-        totalRoomCharges = calc.total;
-        const childLabel =
-          children > 0
-            ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}`
-            : "";
-        const pensionerLabel =
-          pensioners > 0
-            ? `, ${pensioners} pensioner${pensioners !== 1 ? "s" : ""}`
-            : "";
-        chargeDescription = `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel}${pensionerLabel})`;
-      } else {
-        roomRate = roomType.baseRate as number;
-        totalRoomCharges = multiplyCents(roomRate, nightCount);
-        chargeDescription = `${roomType.name} - ${nightCount} night(s)`;
-      }
+      const calc = resolveStayPricing(
+        roomType as Parameters<typeof resolveStayPricing>[0],
+        data.checkInDate,
+        data.checkOutDate,
+        adults,
+        children,
+        pensioners,
+      );
+      const roomRate = calc.nightlyRate;
+      const totalRoomCharges = calc.total;
+      const tiered = roomType.tieredPricing as { childAgeMax: number } | undefined;
+      const childLabel =
+        tiered && children > 0
+          ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}`
+          : "";
+      const pensionerLabel =
+        pensioners > 0
+          ? `, ${pensioners} pensioner${pensioners !== 1 ? "s" : ""}`
+          : "";
+      const chargeDescription =
+        calc.tier === "standard"
+          ? `${roomType.name} - ${nightCount} night(s)`
+          : `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel}${pensionerLabel})`;
 
       // Create reservation
       const resRef = reservationsRef(tenantId, propertyId).doc();

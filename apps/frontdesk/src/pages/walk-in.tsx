@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 import {
-  calculateTieredStayTotal,
+  resolveStayPricing,
   formatCents,
   type RoomType,
 } from "@swiftpms/shared";
@@ -64,19 +64,16 @@ export function WalkInPage() {
     return Math.max(1, Math.round(ms / 86_400_000));
   })();
 
-  const totalCharge = (() => {
-    if (!selectedType?.tieredPricing) {
-      return selectedType ? selectedType.baseRate * nights : 0;
-    }
-    return calculateTieredStayTotal(
-      selectedType.tieredPricing,
-      checkIn,
-      checkOut,
-      adults,
-      children,
-      pensioners,
-    ).total;
-  })();
+  const totalCharge = selectedType
+    ? resolveStayPricing(
+        selectedType,
+        checkIn,
+        checkOut,
+        adults,
+        children,
+        pensioners,
+      ).total
+    : 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

@@ -2,13 +2,16 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import { useBookingStore, type GroupBookingItem } from "@/stores/booking.store";
+import { useGuestAuthStore } from "@/stores/auth.store";
 import {
   checkAvailability,
   type AvailableRoomType,
 } from "@/services/availability";
 import { getAllProperties, type PropertyInfo } from "@/services/property";
+import { getTourOperatorStatus } from "@/services/tour-operators";
 import { BrandMark } from "@/components/brand/logo";
-import { calculateTieredStayTotal, formatCents } from "@swiftpms/shared";
+import { formatCents, resolveStayPricing } from "@swiftpms/shared";
+import type { PricingTier } from "@swiftpms/shared";
 
 interface PropertyAvailability {
   property: PropertyInfo;
@@ -28,11 +31,16 @@ export function RoomsPage() {
   const setRoomType = useBookingStore((s) => s.setRoomType);
   const setProperty = useBookingStore((s) => s.setProperty);
   const setGroupItems = useBookingStore((s) => s.setGroupItems);
+  const isAuthenticated = useGuestAuthStore((s) => s.isAuthenticated);
 
   const [properties, setProperties] = useState<PropertyAvailability[]>([]);
   const [loadingProps, setLoadingProps] = useState(true);
   const [localCheckIn, setLocalCheckIn] = useState(checkInDate ?? "");
   const [localCheckOut, setLocalCheckOut] = useState(checkOutDate ?? "");
+  const [operatorStatus, setOperatorStatus] = useState<{
+    isTourOperator: boolean;
+    discountPercent: number;
+  }>({ isTourOperator: false, discountPercent: 0 });
 
   const today = new Date().toISOString().split("T")[0];
   const hasDates = !!checkInDate && !!checkOutDate;
@@ -47,6 +55,16 @@ export function RoomsPage() {
       .catch(() => {})
       .finally(() => setLoadingProps(false));
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setOperatorStatus({ isTourOperator: false, discountPercent: 0 });
+      return;
+    }
+    getTourOperatorStatus()
+      .then(setOperatorStatus)
+      .catch(() => setOperatorStatus({ isTourOperator: false, discountPercent: 0 }));
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!hasDates || properties.length === 0) return;
@@ -96,36 +114,17 @@ export function RoomsPage() {
       // Legacy solo flow — leave groupItems null.
       setGroupItems(null);
     } else {
-      // Multi-site: distribute total adults + children evenly across N sites,
-      // per-site guest count then drives tiered pricing correctly.
-      const items: GroupBookingItem[] = [];
-      for (let i = 0; i < quantity; i++) {
-        const a = Math.floor(adults / quantity) + (i < adults % quantity ? 1 : 0);
-        const c = Math.floor(children / quantity) + (i < children % quantity ? 1 : 0);
-        const perSiteAdults = Math.max(1, a);
-        const perSiteChildren = c;
-        let perSiteTotal = 0;
-        if (room.tieredPricing && checkInDate && checkOutDate) {
-          const calc = calculateTieredStayTotal(
-            room.tieredPricing,
-            checkInDate,
-            checkOutDate,
-            perSiteAdults,
-            perSiteChildren,
-          );
-          perSiteTotal = calc.total;
-        } else if (checkInDate && checkOutDate) {
-          perSiteTotal = room.baseRate * nightCount(checkInDate, checkOutDate);
-        }
-        items.push({
-          roomTypeId: room.id,
-          roomTypeName: room.name,
-          adults: perSiteAdults,
-          children: perSiteChildren,
-          totalRoomCharges: perSiteTotal,
-        });
-      }
-      setGroupItems(items);
+      setGroupItems(
+        splitGroupItems(
+          room,
+          quantity,
+          adults,
+          children,
+          checkInDate,
+          checkOutDate,
+          operatorStatus.discountPercent,
+        ),
+      );
     }
     navigate("/booking");
   }
@@ -263,6 +262,11 @@ export function RoomsPage() {
                   room={room}
                   nights={hasDates ? nightCount(checkInDate, checkOutDate) : 1}
                   totalGuests={totalGuests}
+                  checkInDate={checkInDate}
+                  checkOutDate={checkOutDate}
+                  adults={adults}
+                  children={children}
+                  discountPercent={operatorStatus.discountPercent}
                   onBook={(qty) => handleBookNow(property.id, room, qty)}
                 />
               ))}
@@ -272,6 +276,52 @@ export function RoomsPage() {
       </div>
     </div>
   );
+}
+
+// Multi-site: distribute total adults + children evenly across N sites, then
+// price each site through resolveStayPricing so rate periods AND the tour
+// operator discount flow into the per-site totals (these feed the booking
+// store, the confirmation page, and the group PDF).
+function splitGroupItems(
+  room: AvailableRoomType,
+  quantity: number,
+  adults: number,
+  children: number,
+  checkInDate: string | null,
+  checkOutDate: string | null,
+  discountPercent: number,
+): GroupBookingItem[] {
+  const items: GroupBookingItem[] = [];
+  for (let i = 0; i < quantity; i++) {
+    const a = Math.floor(adults / quantity) + (i < adults % quantity ? 1 : 0);
+    const c = Math.floor(children / quantity) + (i < children % quantity ? 1 : 0);
+    const perSiteAdults = Math.max(1, a);
+    const perSiteChildren = c;
+    let perSiteTotal = 0;
+    if (checkInDate && checkOutDate) {
+      perSiteTotal = resolveStayPricing(
+        {
+          baseRate: room.baseRate,
+          tieredPricing: room.tieredPricing ?? undefined,
+          ratePeriods: room.ratePeriods ?? undefined,
+        },
+        checkInDate,
+        checkOutDate,
+        perSiteAdults,
+        perSiteChildren,
+        0,
+        discountPercent,
+      ).total;
+    }
+    items.push({
+      roomTypeId: room.id,
+      roomTypeName: room.name,
+      adults: perSiteAdults,
+      children: perSiteChildren,
+      totalRoomCharges: perSiteTotal,
+    });
+  }
+  return items;
 }
 
 const fieldInput =
@@ -305,11 +355,21 @@ function RoomTypeCard({
   room,
   nights,
   totalGuests,
+  checkInDate,
+  checkOutDate,
+  adults,
+  children,
+  discountPercent,
   onBook,
 }: {
   room: AvailableRoomType;
   nights: number;
   totalGuests: number;
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  adults: number;
+  children: number;
+  discountPercent: number;
   onBook: (quantity: number) => void;
 }) {
   // Auto-suggest a multi-site booking when the group is too big for one site.
@@ -332,10 +392,49 @@ function RoomTypeCard({
   }, [suggestedQty]);
   const maxQty = Math.min(room.available, 5);
   const showGroupHint = suggestedQty > 1;
-  const perSite = room.tieredPricing
-    ? room.tieredPricing.standard.baseRate
-    : room.baseRate;
-  const groupTotalEstimate = perSite * nights * quantity;
+  // Mirror resolveStayPricing's rate resolution for the headline rate card:
+  // an active rate period overrides (tier or flat), else standard tier / flat.
+  const activePeriod = checkInDate
+    ? (room.ratePeriods ?? []).find(
+        (p) => checkInDate >= p.start && checkInDate <= p.end,
+      )
+    : undefined;
+  const displayTier: PricingTier | null = activePeriod
+    ? (activePeriod.tier ?? null)
+    : (room.tieredPricing?.standard ?? null);
+  const displayFlatRate = displayTier
+    ? null
+    : (activePeriod?.baseRate ?? room.baseRate);
+  const disc = (v: number) =>
+    discountPercent > 0 ? Math.round((v * (100 - discountPercent)) / 100) : v;
+  const groupTotalEstimate =
+    checkInDate && checkOutDate
+      ? splitGroupItems(
+          room,
+          quantity,
+          adults,
+          children,
+          checkInDate,
+          checkOutDate,
+          discountPercent,
+        ).reduce((sum, it) => sum + it.totalRoomCharges, 0)
+      : (displayTier?.baseRate ?? room.baseRate) * nights * quantity;
+  const calc =
+    checkInDate && checkOutDate
+      ? resolveStayPricing(
+          {
+            baseRate: room.baseRate,
+            tieredPricing: room.tieredPricing ?? undefined,
+            ratePeriods: room.ratePeriods ?? undefined,
+          },
+          checkInDate,
+          checkOutDate,
+          adults,
+          children,
+          0,
+          discountPercent,
+        )
+      : null;
 
   const badge =
     room.available > 3
@@ -414,41 +513,67 @@ function RoomTypeCard({
 
           <div className="mt-5 flex flex-col gap-4 border-t border-border pt-5 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              {room.tieredPricing ? (
+              {displayTier ? (
                 <>
+                  {discountPercent > 0 && (
+                    <span className="mr-2 text-base text-muted-foreground/60 line-through">
+                      {formatCents(displayTier.baseRate)}
+                    </span>
+                  )}
                   <span className="font-display text-2xl font-semibold text-foreground">
-                    {formatCents(room.tieredPricing.standard.baseRate)}
+                    {formatCents(disc(displayTier.baseRate))}
                   </span>
                   <span className="text-sm text-muted-foreground">
-                    {" "}/ night per site ({room.tieredPricing.standard.basePersonCount}{" "}
-                    {room.tieredPricing.standard.basePersonCount === 1
+                    {" "}/ night per site ({displayTier.basePersonCount}{" "}
+                    {displayTier.basePersonCount === 1
                       ? "person"
                       : "people"}{" "}
                     included)
                   </span>
                   <p className="mt-1 text-xs text-muted-foreground">
                     Each extra adult{" "}
-                    {formatCents(room.tieredPricing.standard.extraAdult)}/night
-                    {" · "}children under{" "}
-                    {room.tieredPricing.childAgeMax + 1}{" "}
-                    {formatCents(room.tieredPricing.standard.extraChild)}/night
+                    {formatCents(disc(displayTier.extraAdult))}/night
+                    {room.tieredPricing && (
+                      <>
+                        {" · "}children under{" "}
+                        {room.tieredPricing.childAgeMax + 1}{" "}
+                        {formatCents(disc(displayTier.extraChild))}/night
+                      </>
+                    )}
                   </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    High season rates apply on public holidays, school holidays and long weekends.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <span className="font-display text-2xl font-semibold text-foreground">
-                    {formatCents(room.baseRate)}
-                  </span>
-                  <span className="text-sm text-muted-foreground"> / night per site</span>
-                  {nights > 1 && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {formatCents(room.baseRate * nights)} per site for {nights} nights
+                  {!activePeriod && (
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      High season rates apply on public holidays, school holidays and long weekends.
                     </p>
                   )}
                 </>
+              ) : (
+                <>
+                  {discountPercent > 0 && (
+                    <span className="mr-2 text-base text-muted-foreground/60 line-through">
+                      {formatCents(displayFlatRate ?? room.baseRate)}
+                    </span>
+                  )}
+                  <span className="font-display text-2xl font-semibold text-foreground">
+                    {formatCents(disc(displayFlatRate ?? room.baseRate))}
+                  </span>
+                  <span className="text-sm text-muted-foreground"> / night per site</span>
+                </>
+              )}
+              {calc && nights > 0 && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {discountPercent > 0 && (
+                    <span className="mr-1.5 text-muted-foreground/60 line-through">
+                      {formatCents(calc.grossTotal)}
+                    </span>
+                  )}
+                  {formatCents(calc.total)} per site for {nights} night{nights !== 1 ? "s" : ""}
+                  {discountPercent > 0 && (
+                    <span className="ml-1.5 rounded-full bg-leaf-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-leaf-foreground">
+                      Tour operator rate
+                    </span>
+                  )}
+                </p>
               )}
               {quantity > 1 && (
                 <p className="mt-1 text-xs font-medium text-accent-dark">

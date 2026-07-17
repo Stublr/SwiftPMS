@@ -9,6 +9,7 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { queryClient } from "@/lib/query-client";
 import { AdminPropertiesPage } from "@/pages/admin/properties";
 import { AdminRoomsPage } from "@/pages/admin/rooms";
+import { TourOperatorsPage } from "@/pages/admin/tour-operators";
 import { UsersPage } from "@/pages/admin/users";
 import { CashupPage } from "@/pages/cashup";
 import { CheckInPage } from "@/pages/check-in";
@@ -61,6 +62,8 @@ function PageRouter() {
       return <AdminRoomsPage />;
     case "/admin/users":
       return <UsersPage />;
+    case "/tour-operators":
+      return <TourOperatorsPage />;
     case "/cashup":
       return <CashupPage />;
     case "/legacy-booking":

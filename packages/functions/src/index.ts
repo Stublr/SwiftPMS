@@ -31,6 +31,8 @@ export { checkAvailability } from "./guest/checkAvailability.js";
 export { createGuestReservation } from "./guest/createGuestReservation.js";
 export { createGuestReservationGroup } from "./guest/createGuestReservationGroup.js";
 export { createGuest } from "./guest/createGuest.js";
+export { getTourOperatorStatus } from "./guest/getTourOperatorStatus.js";
+export { setTourOperatorDiscount } from "./guest/setTourOperatorDiscount.js";
 
 // Triggers
 export { onReservationUpdate } from "./triggers/onReservationUpdate.js";

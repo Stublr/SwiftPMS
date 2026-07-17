@@ -842,7 +842,7 @@ function CreateReservationForm({
         checkInDate: form.checkInDate,
         checkOutDate: form.checkOutDate,
         adults: form.adults,
-        children: form.children || undefined,
+        children: form.children,
         specialRequests: form.specialRequests || undefined,
       });
       await onSave();
