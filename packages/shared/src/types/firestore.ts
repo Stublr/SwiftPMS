@@ -4,6 +4,7 @@ import type { ReservationStatus } from "../constants/reservation-status.js";
 import type { FolioStatus } from "../constants/folio-status.js";
 import type { ChargeCategory } from "../constants/charge-category.js";
 import type { PaymentMethod } from "../constants/payment-methods.js";
+import type { RatePeriod } from "./room-type.js";
 
 // --- Tenant ---
 
@@ -16,6 +17,7 @@ export interface TenantDoc {
     checkOutTime: string;
     taxRate: number;
     taxInclusive: boolean;
+    tourOperatorDiscountPercent?: number | null;
   };
   createdAt: unknown;
   updatedAt: unknown;
@@ -60,6 +62,7 @@ export interface RoomTypeDoc {
   code: string;
   description: string | null;
   baseRate: number; // cents per night
+  ratePeriods?: RatePeriod[];
   maxOccupancy: number;
   bedConfiguration: string;
   amenities: string[];
