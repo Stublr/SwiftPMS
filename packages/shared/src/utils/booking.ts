@@ -1,4 +1,4 @@
-import type { PricingTier, TieredPricing } from "../types/room-type.js";
+import type { PricingTier, TieredPricing, RatePeriod } from "../types/room-type.js";
 import { multiplyCents, subtractCents } from "./currency.js";
 import { calculateNights } from "./date.js";
 
@@ -84,6 +84,28 @@ export function calculateTieredStayTotal(
     nightlyRate,
     total: multiplyCents(nightlyRate, nights),
   };
+}
+
+/**
+ * Resolve the effective nightly rate, tier, and total for a stay, accounting
+ * for rate periods (override windows) and an optional operator discount.
+ * Single lever all reservation-pricing callers should switch to.
+ */
+export function resolveStayPricing(
+  roomType: { baseRate: number; tieredPricing?: TieredPricing; ratePeriods?: RatePeriod[] },
+  checkIn: string, checkOut: string, adults: number, children: number, seniors = 0,
+  discountPercent = 0,
+): { tier: "standard"|"high"|"period"; nightlyRate: number; grossTotal: number; total: number; discountAmount: number } {
+  const nights = calculateNights(checkIn, checkOut);
+  const period = (roomType.ratePeriods ?? []).find(p => checkIn >= p.start && checkIn <= p.end);
+  let tier: "standard"|"high"|"period"; let nightlyRate: number;
+  if (period?.tier)      { nightlyRate = calculateTieredNightlyRate(period.tier, adults, children, seniors); tier = "period"; }
+  else if (period)       { nightlyRate = period.baseRate ?? roomType.baseRate; tier = "period"; }
+  else if (roomType.tieredPricing) { const c = calculateTieredStayTotal(roomType.tieredPricing, checkIn, checkOut, adults, children, seniors); nightlyRate = c.nightlyRate; tier = c.tier; }
+  else                   { nightlyRate = roomType.baseRate; tier = "standard"; }
+  const grossTotal = multiplyCents(nightlyRate, nights);
+  const discountAmount = discountPercent > 0 ? Math.round(grossTotal * discountPercent / 100) : 0;
+  return { tier, nightlyRate, grossTotal, total: grossTotal - discountAmount, discountAmount };
 }
 
 /**
