@@ -82,6 +82,14 @@ service cloud.firestore {
         allow delete: if belongsToTenant(tenantId) && isManager();
       }
 
+      // Tour operators — staff read; manager+ writes. The global discount %
+      // itself lives on the tenant root doc and is written by the
+      // setTourOperatorDiscount callable (admin SDK bypasses rules).
+      match /tourOperators/{operatorId} {
+        allow read: if tenantStaff(tenantId);
+        allow create, update, delete: if belongsToTenant(tenantId) && isManager();
+      }
+
       // Room Types — publicly readable (booking inventory is non-sensitive
       // and the guest portal must list it before login). Manager+ writes.
       match /roomTypes/{roomTypeId} {
