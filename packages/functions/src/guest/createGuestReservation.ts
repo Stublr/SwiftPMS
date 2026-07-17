@@ -3,14 +3,12 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 
 import {
   calculateNights,
-  calculateTieredStayTotal,
-  multiplyCents,
+  resolveStayPricing,
   createReservationSchema,
-  type TieredPricing,
 } from "@swiftpms/shared";
 
 import { notFound, preconditionFailed, unauthorized, wrapError } from "../lib/errors.js";
-import { db, reservationsRef, foliosRef, roomTypeRef, roomsRef, guestRef, propertyRef } from "../lib/firestore.js";
+import { db, reservationsRef, foliosRef, roomTypeRef, roomsRef, guestRef, propertyRef, tenantRef, tourOperatorsRef } from "../lib/firestore.js";
 import { validateRequest } from "../lib/validation.js";
 
 export const createGuestReservation = onCall({ cors: true }, async (request) => {
@@ -66,6 +64,18 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
       throw preconditionFailed("This property is currently unavailable for bookings.");
     }
 
+    // Tour operator discount — authoritative check at booking time.
+    const operatorEmail = (request.auth.token.email as string | undefined ?? "").toLowerCase();
+    const operatorSnap = await tourOperatorsRef(tenantId)
+      .where("email", "==", operatorEmail)
+      .where("active", "==", true)
+      .limit(1)
+      .get();
+    const tenantSnap = await tenantRef(tenantId).get();
+    const discountPercent = !operatorSnap.empty
+      ? ((tenantSnap.data()?.settings?.tourOperatorDiscountPercent as number | undefined) ?? 0)
+      : 0;
+
     // Verify guestId matches authenticated user
     if (data.guestId !== request.auth.uid) {
       throw preconditionFailed("guestId must match authenticated user");
@@ -82,31 +92,27 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
       const roomType = rtSnap.data()!;
 
       const nightCount = calculateNights(data.checkInDate, data.checkOutDate);
-      const tiered = roomType.tieredPricing as TieredPricing | undefined;
       const adults = data.adults;
       const children = data.children ?? 0;
 
-      let roomRate: number;
-      let totalRoomCharges: number;
-      let chargeDescription: string;
-      if (tiered) {
-        const calc = calculateTieredStayTotal(
-          tiered,
-          data.checkInDate,
-          data.checkOutDate,
-          adults,
-          children,
-        );
-        roomRate = calc.nightlyRate;
-        totalRoomCharges = calc.total;
-        const childLabel =
-          children > 0 ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}` : "";
-        chargeDescription = `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel})`;
-      } else {
-        roomRate = roomType.baseRate as number;
-        totalRoomCharges = multiplyCents(roomRate, nightCount);
-        chargeDescription = `${roomType.name} - ${nightCount} night(s)`;
-      }
+      const calc = resolveStayPricing(
+        roomType as Parameters<typeof resolveStayPricing>[0],
+        data.checkInDate,
+        data.checkOutDate,
+        adults,
+        children,
+        0,
+        discountPercent,
+      );
+      const roomRate = calc.nightlyRate;
+      const totalRoomCharges = calc.total;
+      const tiered = roomType.tieredPricing as { childAgeMax: number } | undefined;
+      const childLabel =
+        tiered && children > 0 ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}` : "";
+      const chargeDescription =
+        calc.tier === "standard"
+          ? `${roomType.name} - ${nightCount} night(s)`
+          : `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel})`;
 
       // Auto-assign an available room of this type
       const allRooms = await tx.get(
@@ -181,20 +187,34 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
 
       // Create folio
       const folioRef = foliosRef(tenantId, propertyId).doc();
-      tx.set(folioRef, {
-        reservationId: resRef.id,
-        guestId: data.guestId,
-        charges: [{
-          id: `chg_${Date.now()}`,
-          category: "room",
-          description: chargeDescription,
-          amount: roomRate,
-          quantity: nightCount,
-          total: totalRoomCharges,
+      const folioCharges = [{
+        id: `chg_${Date.now()}`,
+        category: "room",
+        description: chargeDescription,
+        amount: roomRate,
+        quantity: nightCount,
+        total: calc.grossTotal,
+        date: data.checkInDate,
+        addedBy: `guest:${request.auth!.uid}`,
+        addedAt: new Date().toISOString(),
+      }];
+      if (calc.discountAmount > 0) {
+        folioCharges.push({
+          id: `chg_${Date.now()}_disc`,
+          category: "discount",
+          description: "Tour operator discount",
+          amount: -calc.discountAmount,
+          quantity: 1,
+          total: -calc.discountAmount,
           date: data.checkInDate,
           addedBy: `guest:${request.auth!.uid}`,
           addedAt: new Date().toISOString(),
-        }],
+        });
+      }
+      tx.set(folioRef, {
+        reservationId: resRef.id,
+        guestId: data.guestId,
+        charges: folioCharges,
         payments: [],
         totalCharges: totalRoomCharges,
         totalPayments: 0,
