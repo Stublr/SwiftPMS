@@ -43,3 +43,6 @@ storage-debug.log
 
 # MinIO data
 minio_data/
+
+# Locally built shared-package tarball (rebuilt by pnpm pack)
+packages/functions/swiftpms-shared-0.0.0.tgz
