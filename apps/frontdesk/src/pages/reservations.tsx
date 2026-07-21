@@ -832,6 +832,10 @@ function CreateReservationForm({
       setError("Please fill in all required fields");
       return;
     }
+    if (form.checkOutDate <= form.checkInDate) {
+      setError("Check-out date must be after check-in date");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -846,8 +850,12 @@ function CreateReservationForm({
         specialRequests: form.specialRequests || undefined,
       });
       await onSave();
-    } catch {
-      setError("Failed to create reservation");
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message
+          ? `Failed to create reservation: ${err.message}`
+          : "Failed to create reservation",
+      );
     } finally {
       setSaving(false);
     }
