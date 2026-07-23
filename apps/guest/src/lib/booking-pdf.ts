@@ -157,6 +157,8 @@ interface SectionExtras {
   siteCount?: number;
   /** Base64 data URI of the property logo. Inlined so the printed PDF doesn't depend on network access. */
   logoDataUri?: string | null;
+  /** "invoice" renders a tax-invoice variant: INV number, no check-in QR. */
+  docType?: "confirmation" | "invoice";
 }
 
 /**
@@ -219,10 +221,12 @@ async function buildSection(
     ? `<img class="brand-logo" src="${extras.logoDataUri}" alt="${propertyName ?? "Property"}"/>`
     : `<div class="brand">${propertyName ?? "SwiftPMS"}</div>`;
 
+  const isInvoice = extras.docType === "invoice";
+
   return `<div class="p">
 ${siteBadge}
 <div class="hdr"><div>${brandBlock}</div>
-<div class="cb"><div class="cl">Booking confirmation</div><div class="cn">CONFIRMATION NUMBER: ${refId}</div>
+<div class="cb"><div class="cl">${isInvoice ? "Tax invoice" : "Booking confirmation"}</div><div class="cn">${isInvoice ? `INVOICE NUMBER: INV-${refId}` : `CONFIRMATION NUMBER: ${refId}`}</div>
 <div class="st">STATUS: <span class="badge ${r.status}">${statusLabel(r.status)}</span></div></div></div>
 
 <div class="pn">${propertyName ?? "Property"}</div>
@@ -249,23 +253,23 @@ ${siteBadge}
 ${amenityStr ? `<div class="al">${amenityStr}</div>` : ""}
 </div>
 
-<div class="qr-box">
+${isInvoice ? "" : `<div class="qr-box">
 <img src="${qrDataUri}" alt="Booking QR code"/>
 <div class="qr-text">
 <h4>Present this code on arrival</h4>
 <p>Staff at ${propertyName ?? "the property"} will scan this QR to check ${isGroup ? "this site" : "you"} in. The code stays valid for the full duration of your stay (${nights} night${nights !== 1 ? "s" : ""}, ${ci.day} ${ci.month} ${RIGHT_ARROW} ${co.day} ${co.month}).${isGroup ? " Each site in a group booking has its own QR — bring them all." : ""}</p>
 <span class="qr-ref">REF #${refId}</span>
 </div>
-</div>
+</div>`}
 
-${r.specialRequests ? `<div class="ib sp"><h4>Special Requests</h4><p>${r.specialRequests}</p></div>` : ""}
+${r.specialRequests && !isInvoice ? `<div class="ib sp"><h4>Special Requests</h4><p>${r.specialRequests}</p></div>` : ""}
 
-<div class="ib im"><h4>Important Information</h4>
-<p>Please present this confirmation at check-in. Check-in from ${ciTime}, check-out by ${coTime}.</p></div>
+${isInvoice ? "" : `<div class="ib im"><h4>Important Information</h4>
+<p>Please present this confirmation at check-in. Check-in from ${ciTime}, check-out by ${coTime}.</p></div>`}
 
 ${propertyPhone || propertyEmail ? `<div class="ib ct"><b>Need help?</b> ${propertyEmail ? `Email: ${propertyEmail}` : ""}${propertyEmail && propertyPhone ? " | " : ""}${propertyPhone ? `Phone: ${propertyPhone}` : ""}</div>` : ""}
 
-<div class="ft">This confirmation can be used to check in at ${propertyName ?? "the property"}. Generated ${new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div>
+<div class="ft">${isInvoice ? `Tax invoice INV-${refId} for booking #${refId} at ${propertyName ?? "the property"}.` : `This confirmation can be used to check in at ${propertyName ?? "the property"}.`} Generated ${new Date().toLocaleDateString("en-ZA", { day: "numeric", month: "long", year: "numeric" })}</div>
 </div>`;
 }
 
@@ -274,14 +278,21 @@ ${propertyPhone || propertyEmail ? `<div class="ib ct"><b>Need help?</b> ${prope
  * Sections after the first get an implicit page break via
  * `.p + .p { page-break-before: always }` (defined in PDF_STYLES).
  */
-async function buildHtmlDocument(items: BookingPdfData[]): Promise<string> {
+async function buildHtmlDocument(
+  items: BookingPdfData[],
+  docType: "confirmation" | "invoice" = "confirmation",
+): Promise<string> {
   if (items.length === 0) return "";
   const first = items[0]!;
   const refId = first.reservation.id.slice(0, 8).toUpperCase();
   const title =
-    items.length > 1
-      ? `Group booking confirmation ${EM_DASH} ${items.length} sites`
-      : `Booking Confirmation - ${refId}`;
+    docType === "invoice"
+      ? items.length > 1
+        ? `Group invoice ${EM_DASH} ${items.length} sites`
+        : `Invoice INV-${refId}`
+      : items.length > 1
+        ? `Group booking confirmation ${EM_DASH} ${items.length} sites`
+        : `Booking Confirmation - ${refId}`;
   // Resolve the property logo ONCE and reuse across sections — every section
   // in a group booking is for the same property, and inlining a ~65 KB base64
   // string per section would bloat the document.
@@ -293,6 +304,7 @@ async function buildHtmlDocument(items: BookingPdfData[]): Promise<string> {
         siteIndex: i + 1,
         siteCount: items.length,
         logoDataUri,
+        docType,
       }),
     ),
   );
@@ -310,12 +322,23 @@ export async function downloadBookingPdf(data: BookingPdfData): Promise<void> {
   await downloadBookingGroupPdf([data]);
 }
 
+/** Tax-invoice variant of the booking PDF (INV number, no check-in QR). */
+export async function downloadInvoicePdf(data: BookingPdfData): Promise<void> {
+  await downloadBookingGroupPdf([data], "invoice");
+}
+
+/** Group tax invoice — one page per site. */
+export async function downloadInvoiceGroupPdf(items: BookingPdfData[]): Promise<void> {
+  await downloadBookingGroupPdf(items, "invoice");
+}
+
 /**
  * Open a print-preview window with a group booking confirmation — one page
  * per site, each with its own QR. Same window mechanics as the solo version.
  */
 export async function downloadBookingGroupPdf(
   items: BookingPdfData[],
+  docType: "confirmation" | "invoice" = "confirmation",
 ): Promise<void> {
   if (items.length === 0) return;
   // Open the window synchronously while we still have the user-gesture token,
@@ -326,9 +349,9 @@ export async function downloadBookingGroupPdf(
     return;
   }
   w.document.write(
-    `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;">Generating your confirmation${items.length > 1 ? "s" : ""}…</body></html>`,
+    `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:24px;">Generating your ${docType === "invoice" ? "invoice" : "confirmation"}${items.length > 1 ? "s" : ""}…</body></html>`,
   );
-  const html = await buildHtmlDocument(items);
+  const html = await buildHtmlDocument(items, docType);
   w.document.open();
   w.document.write(html);
   w.document.close();
