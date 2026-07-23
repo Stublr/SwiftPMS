@@ -24,11 +24,20 @@ export interface TieredPricing {
   high: PricingTier;
   /**
    * Date ranges [start, end] inclusive in YYYY-MM-DD when the `high` tier
-   * applies. If a stay's check-in date falls inside any range, the entire
-   * stay is priced at the high tier (industry convention for campsites).
+   * applies. Pricing is per-night: each night whose date falls inside any
+   * range is charged at the high tier, other nights at standard — so a stay
+   * that straddles a boundary is split across both tiers.
    * Empty array = high tier never auto-applies; standard tier is used.
    */
   peakRanges: { start: string; end: string }[];
+  /**
+   * Optional cutover date (YYYY-MM-DD). When set, this tiered card only prices
+   * stays whose check-in is on or after it; earlier check-ins fall back to the
+   * room type's flat `baseRate` (the previous rate). Lets a new rate card be
+   * loaded ahead of its start date — so advance bookings for the new period are
+   * priced correctly — without repricing stays in the current season.
+   */
+  effectiveFrom?: string;
 }
 
 export interface RatePeriod {

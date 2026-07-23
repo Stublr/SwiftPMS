@@ -1,6 +1,6 @@
 import type { PricingTier, TieredPricing, RatePeriod } from "../types/room-type.js";
 import { multiplyCents, subtractCents } from "./currency.js";
-import { calculateNights } from "./date.js";
+import { addDays, calculateNights } from "./date.js";
 
 /**
  * Calculate total room charges for a stay.
@@ -15,8 +15,9 @@ export function calculateRoomTotal(
 }
 
 /**
- * Determine whether a check-in date falls inside any declared peak range.
- * Returns true if the stay should be priced at the high tier.
+ * Determine whether a given date falls inside any declared peak range.
+ * Used per-night: a night is charged at the high tier when its date is
+ * inside a peak range.
  */
 export function isPeakStay(
   tiered: TieredPricing,
@@ -61,11 +62,25 @@ export function calculateTieredNightlyRate(
 }
 
 /**
- * Total stay charge (cents) for a tiered-pricing room type.
+ * A run of consecutive nights charged at the same nightly rate. Stays that
+ * cross a season boundary produce multiple segments; flat and single-season
+ * stays produce one. Amounts are gross (before any discount).
+ */
+export interface StaySegment {
+  tier: "standard" | "high" | "period";
+  start: string; // YYYY-MM-DD of the first night in the run
+  nights: number;
+  nightlyRate: number; // cents per night
+  subtotal: number; // nightlyRate * nights
+}
+
+/**
+ * Total stay charge (cents) for a tiered-pricing room type, priced per night.
  *
- * Peak/standard is decided at check-in (whole stay priced at that tier).
- * The folio line items distinguish the night rate, but this returns the
- * single total figure used to populate Folio.totalCharges.
+ * Each night is charged at its own season's tier: a night whose date falls in
+ * a peak range uses the `high` tier, otherwise `standard`. Consecutive nights
+ * at the same rate are grouped into `segments` (used to build folio line
+ * items). `tier` is "mixed" when a stay straddles a season boundary.
  */
 export function calculateTieredStayTotal(
   tiered: TieredPricing,
@@ -74,38 +89,83 @@ export function calculateTieredStayTotal(
   adults: number,
   children: number,
   seniors = 0,
-): { tier: "standard" | "high"; nightlyRate: number; total: number } {
-  const isHigh = isPeakStay(tiered, checkIn);
-  const tier = isHigh ? tiered.high : tiered.standard;
-  const nightlyRate = calculateTieredNightlyRate(tier, adults, children, seniors);
+): { tier: "standard" | "high" | "mixed"; nightlyRate: number; total: number; segments: StaySegment[] } {
   const nights = calculateNights(checkIn, checkOut);
-  return {
-    tier: isHigh ? "high" : "standard",
-    nightlyRate,
-    total: multiplyCents(nightlyRate, nights),
-  };
+  const segments: StaySegment[] = [];
+  let total = 0;
+  for (let i = 0; i < nights; i++) {
+    const date = addDays(checkIn, i);
+    const isHigh = isPeakStay(tiered, date);
+    const nightTier: "standard" | "high" = isHigh ? "high" : "standard";
+    const rate = calculateTieredNightlyRate(
+      isHigh ? tiered.high : tiered.standard,
+      adults,
+      children,
+      seniors,
+    );
+    total += rate;
+    const last = segments[segments.length - 1];
+    if (last && last.tier === nightTier && last.nightlyRate === rate) {
+      last.nights += 1;
+      last.subtotal += rate;
+    } else {
+      segments.push({ tier: nightTier, start: date, nights: 1, nightlyRate: rate, subtotal: rate });
+    }
+  }
+  const seasons = new Set(segments.map((s) => s.tier));
+  const tier: "standard" | "high" | "mixed" =
+    seasons.size > 1 ? "mixed" : segments[0]?.tier === "high" ? "high" : "standard";
+  return { tier, nightlyRate: segments[0]?.nightlyRate ?? 0, total, segments };
 }
 
 /**
- * Resolve the effective nightly rate, tier, and total for a stay, accounting
- * for rate periods (override windows) and an optional operator discount.
- * Single lever all reservation-pricing callers should switch to.
+ * Resolve the effective nightly rate, tier, total, and per-season segments for
+ * a stay, accounting for rate periods (override windows) and an optional
+ * operator discount. Single lever all reservation-pricing callers should use.
+ *
+ * `segments` breaks the stay into consecutive same-rate runs (gross, before
+ * discount) — one entry for flat/period stays, more when a tiered stay
+ * straddles a season boundary. `nightlyRate` is the first night's rate, kept
+ * as a representative "headline" rate; `grossTotal` is the true per-night sum.
+ *
+ * Tiered pricing with an `effectiveFrom` set only applies to check-ins on or
+ * after that date — earlier check-ins fall back to the flat `baseRate`.
  */
 export function resolveStayPricing(
   roomType: { baseRate: number; tieredPricing?: TieredPricing; ratePeriods?: RatePeriod[] },
   checkIn: string, checkOut: string, adults: number, children: number, seniors = 0,
   discountPercent = 0,
-): { tier: "standard"|"high"|"period"; nightlyRate: number; grossTotal: number; total: number; discountAmount: number } {
+): { tier: "standard"|"high"|"period"|"mixed"; nightlyRate: number; grossTotal: number; total: number; discountAmount: number; segments: StaySegment[] } {
   const nights = calculateNights(checkIn, checkOut);
   const period = (roomType.ratePeriods ?? []).find(p => checkIn >= p.start && checkIn <= p.end);
-  let tier: "standard"|"high"|"period"; let nightlyRate: number;
-  if (period?.tier)      { nightlyRate = calculateTieredNightlyRate(period.tier, adults, children, seniors); tier = "period"; }
-  else if (period)       { nightlyRate = period.baseRate ?? roomType.baseRate; tier = "period"; }
-  else if (roomType.tieredPricing) { const c = calculateTieredStayTotal(roomType.tieredPricing, checkIn, checkOut, adults, children, seniors); nightlyRate = c.nightlyRate; tier = c.tier; }
-  else                   { nightlyRate = roomType.baseRate; tier = "standard"; }
-  const grossTotal = multiplyCents(nightlyRate, nights);
+  let tier: "standard"|"high"|"period"|"mixed"; let nightlyRate: number; let grossTotal: number; let segments: StaySegment[];
+  if (period?.tier) {
+    nightlyRate = calculateTieredNightlyRate(period.tier, adults, children, seniors);
+    grossTotal = multiplyCents(nightlyRate, nights);
+    segments = [{ tier: "period", start: checkIn, nights, nightlyRate, subtotal: grossTotal }];
+    tier = "period";
+  } else if (period) {
+    nightlyRate = period.baseRate ?? roomType.baseRate;
+    grossTotal = multiplyCents(nightlyRate, nights);
+    segments = [{ tier: "period", start: checkIn, nights, nightlyRate, subtotal: grossTotal }];
+    tier = "period";
+  } else if (
+    roomType.tieredPricing &&
+    (!roomType.tieredPricing.effectiveFrom || checkIn >= roomType.tieredPricing.effectiveFrom)
+  ) {
+    const c = calculateTieredStayTotal(roomType.tieredPricing, checkIn, checkOut, adults, children, seniors);
+    nightlyRate = c.nightlyRate;
+    grossTotal = c.total;
+    segments = c.segments;
+    tier = c.tier;
+  } else {
+    nightlyRate = roomType.baseRate;
+    grossTotal = multiplyCents(nightlyRate, nights);
+    segments = [{ tier: "standard", start: checkIn, nights, nightlyRate, subtotal: grossTotal }];
+    tier = "standard";
+  }
   const discountAmount = discountPercent > 0 ? Math.round(grossTotal * discountPercent / 100) : 0;
-  return { tier, nightlyRate, grossTotal, total: grossTotal - discountAmount, discountAmount };
+  return { tier, nightlyRate, grossTotal, total: grossTotal - discountAmount, discountAmount, segments };
 }
 
 /**

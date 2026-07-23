@@ -399,9 +399,15 @@ function RoomTypeCard({
         (p) => checkInDate >= p.start && checkInDate <= p.end,
       )
     : undefined;
+  // The tiered card only takes over from the flat rate once its effectiveFrom
+  // cutover is reached for the selected check-in (mirrors resolveStayPricing).
+  const tieredInEffect =
+    !!room.tieredPricing &&
+    (!room.tieredPricing.effectiveFrom ||
+      (!!checkInDate && checkInDate >= room.tieredPricing.effectiveFrom));
   const displayTier: PricingTier | null = activePeriod
     ? (activePeriod.tier ?? null)
-    : (room.tieredPricing?.standard ?? null);
+    : (tieredInEffect ? (room.tieredPricing?.standard ?? null) : null);
   const displayFlatRate = displayTier
     ? null
     : (activePeriod?.baseRate ?? room.baseRate);

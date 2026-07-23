@@ -107,10 +107,24 @@ export const createReservation = onCall({ cors: true }, async (request) => {
         pensioners > 0
           ? `, ${pensioners} pensioner${pensioners !== 1 ? "s" : ""}`
           : "";
-      const chargeDescription =
-        calc.tier === "standard"
-          ? `${roomType.name} - ${nightCount} night(s)`
-          : `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel}${pensionerLabel})`;
+      // One folio line per pricing segment. A stay that straddles a season
+      // boundary produces multiple lines (e.g. standard nights + peak nights)
+      // so amount × quantity === total holds for each line.
+      const seasonName = (t: string) => (t === "high" ? "peak" : t);
+      const roomCharges = calc.segments.map((seg, i) => ({
+        id: `chg_${Date.now()}_${i}`,
+        category: "room" as const,
+        description:
+          calc.segments.length === 1 && seg.tier === "standard"
+            ? `${roomType.name} - ${seg.nights} night(s)`
+            : `${roomType.name} - ${seg.nights} night(s) (${seasonName(seg.tier)} season, ${adults} adult(s)${childLabel}${pensionerLabel})`,
+        amount: seg.nightlyRate,
+        quantity: seg.nights,
+        total: seg.subtotal,
+        date: seg.start,
+        addedBy: request.auth!.uid,
+        addedAt: new Date().toISOString(),
+      }));
 
       // Create reservation
       const resRef = reservationsRef(tenantId, propertyId).doc();
@@ -147,17 +161,7 @@ export const createReservation = onCall({ cors: true }, async (request) => {
       tx.set(folioRef, {
         reservationId: resRef.id,
         guestId: data.guestId,
-        charges: [{
-          id: `chg_${Date.now()}`,
-          category: "room",
-          description: chargeDescription,
-          amount: roomRate,
-          quantity: nightCount,
-          total: totalRoomCharges,
-          date: data.checkInDate,
-          addedBy: request.auth!.uid,
-          addedAt: new Date().toISOString(),
-        }],
+        charges: roomCharges,
         payments: [],
         totalCharges: totalRoomCharges,
         totalPayments: 0,

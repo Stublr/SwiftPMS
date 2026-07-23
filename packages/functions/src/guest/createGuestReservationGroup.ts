@@ -174,7 +174,8 @@ export const createGuestReservationGroup = onCall(
           totalRoomCharges: number;
           grossRoomCharges: number;
           discountAmount: number;
-          chargeDescription: string;
+          childLabel: string;
+          segments: ReturnType<typeof resolveStayPricing>["segments"];
           adults: number;
           children: number;
         }[] = [];
@@ -215,10 +216,6 @@ export const createGuestReservationGroup = onCall(
           const childLabel = tiered && children > 0
             ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}`
             : "";
-          const chargeDescription =
-            calc.tier === "standard"
-              ? `${roomType.name} #${i + 1} — ${nightCount} night(s) (${adults} adult(s), ${children} child(ren))`
-              : `${roomType.name} #${i + 1} — ${nightCount} night(s) (${calc.tier}, ${adults} adult(s)${childLabel})`;
 
           assignments.push({
             roomId: available.id,
@@ -229,7 +226,8 @@ export const createGuestReservationGroup = onCall(
             totalRoomCharges,
             grossRoomCharges: calc.grossTotal,
             discountAmount: calc.discountAmount,
-            chargeDescription,
+            childLabel,
+            segments: calc.segments,
             adults,
             children,
           });
@@ -290,6 +288,10 @@ export const createGuestReservationGroup = onCall(
         }
 
         // Single folio with a charge per site.
+        // One line per (site × pricing segment). A site whose stay straddles a
+        // season boundary contributes multiple lines so each line's
+        // amount × quantity === total.
+        const seasonName = (t: string) => (t === "high" ? "peak" : t);
         const charges: {
           id: string;
           category: string;
@@ -301,18 +303,23 @@ export const createGuestReservationGroup = onCall(
           reservationId?: string;
           addedBy: string;
           addedAt: string;
-        }[] = assignments.map((a, i) => ({
-          id: `chg_${Date.now()}_${i}`,
-          category: "room",
-          description: a.chargeDescription,
-          amount: a.roomRate,
-          quantity: nightCount,
-          total: a.grossRoomCharges,
-          date: data.checkInDate,
-          reservationId: reservationRefs[i]!.id,
-          addedBy: `guest:${request.auth!.uid}`,
-          addedAt: new Date().toISOString(),
-        }));
+        }[] = assignments.flatMap((a, i) =>
+          a.segments.map((seg, j) => ({
+            id: `chg_${Date.now()}_${i}_${j}`,
+            category: "room",
+            description:
+              a.segments.length === 1 && seg.tier === "standard"
+                ? `${a.roomTypeName} #${i + 1} — ${seg.nights} night(s) (${a.adults} adult(s), ${a.children} child(ren))`
+                : `${a.roomTypeName} #${i + 1} — ${seg.nights} night(s) (${seasonName(seg.tier)}, ${a.adults} adult(s)${a.childLabel})`,
+            amount: seg.nightlyRate,
+            quantity: seg.nights,
+            total: seg.subtotal,
+            date: seg.start,
+            reservationId: reservationRefs[i]!.id,
+            addedBy: `guest:${request.auth!.uid}`,
+            addedAt: new Date().toISOString(),
+          })),
+        );
 
         const totalDiscount = assignments.reduce((sum, a) => sum + a.discountAmount, 0);
         if (totalDiscount > 0) {

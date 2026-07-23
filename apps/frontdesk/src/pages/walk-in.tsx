@@ -345,7 +345,12 @@ export function WalkInPage() {
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium">Children (under 12)</label>
+              <label className="block text-xs font-medium">
+                Children
+                {selectedType?.tieredPricing
+                  ? ` (under ${selectedType.tieredPricing.childAgeMax + 1})`
+                  : ""}
+              </label>
               <select
                 value={children}
                 onChange={(e) => setChildren(Number(e.target.value))}

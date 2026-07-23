@@ -327,7 +327,10 @@ export function BookingPage() {
         )
       : null;
   const tieredCalc =
-    roomType?.tieredPricing && checkInDate && checkOutDate
+    roomType?.tieredPricing &&
+    checkInDate &&
+    checkOutDate &&
+    (!roomType.tieredPricing.effectiveFrom || checkInDate >= roomType.tieredPricing.effectiveFrom)
       ? calculateTieredStayTotal(
           roomType.tieredPricing,
           checkInDate,
@@ -352,9 +355,12 @@ export function BookingPage() {
           (p) => checkInDate >= p.start && checkInDate <= p.end,
         )
       : undefined;
+  // A stay that straddles a season boundary can't be shown as one per-person
+  // breakdown — it's rendered as a per-segment list instead.
+  const isMixed = stayCalc?.tier === "mixed";
   const breakdownTier = activePeriod
     ? (activePeriod.tier ?? null)
-    : roomType?.tieredPricing && tieredCalc
+    : roomType?.tieredPricing && tieredCalc && (tieredCalc.tier === "standard" || tieredCalc.tier === "high")
       ? roomType.tieredPricing[tieredCalc.tier]
       : null;
   const breakdownTierLabel = activePeriod?.tier
@@ -725,7 +731,24 @@ export function BookingPage() {
 
               {roomType && (
                 <>
-                  {breakdownTier ? (
+                  {isMixed ? (
+                    <div className="space-y-1 text-xs text-muted-foreground">
+                      {stayCalc!.segments.map((seg, idx) => (
+                        <div key={idx} className="flex justify-between">
+                          <span>
+                            {seg.tier === "high" ? "Peak" : "Standard"} season ·{" "}
+                            {formatCents(seg.nightlyRate)} × {seg.nights}{" "}
+                            {seg.nights === 1 ? "night" : "nights"}
+                          </span>
+                          <span>{formatCents(seg.subtotal)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between pt-1 font-medium text-foreground">
+                        <span>Subtotal</span>
+                        <span>{formatCents(grossCents)}</span>
+                      </div>
+                    </div>
+                  ) : breakdownTier ? (
                     <div className="space-y-1 text-xs text-muted-foreground">
                       <div className="flex justify-between">
                         <span>

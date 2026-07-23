@@ -115,10 +115,7 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
       const tiered = roomType.tieredPricing as { childAgeMax: number } | undefined;
       const childLabel =
         tiered && children > 0 ? `, ${children} child(ren) under ${tiered.childAgeMax + 1}` : "";
-      const chargeDescription =
-        calc.tier === "standard"
-          ? `${roomType.name} - ${nightCount} night(s)`
-          : `${roomType.name} - ${nightCount} night(s) (${calc.tier} season, ${adults} adult(s)${childLabel})`;
+      const seasonName = (t: string) => (t === "high" ? "peak" : t);
 
       // Auto-assign an available room of this type
       const allRooms = await tx.get(
@@ -200,17 +197,22 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
 
       // Create folio
       const folioRef = foliosRef(tenantId, propertyId).doc();
-      const folioCharges = [{
-        id: `chg_${Date.now()}`,
+      // One folio line per pricing segment — a boundary-straddling stay yields
+      // separate standard/peak lines so each line's amount × quantity === total.
+      const folioCharges = calc.segments.map((seg, i) => ({
+        id: `chg_${Date.now()}_${i}`,
         category: "room",
-        description: chargeDescription,
-        amount: roomRate,
-        quantity: nightCount,
-        total: calc.grossTotal,
-        date: data.checkInDate,
+        description:
+          calc.segments.length === 1 && seg.tier === "standard"
+            ? `${roomType.name} - ${seg.nights} night(s)`
+            : `${roomType.name} - ${seg.nights} night(s) (${seasonName(seg.tier)} season, ${adults} adult(s)${childLabel})`,
+        amount: seg.nightlyRate,
+        quantity: seg.nights,
+        total: seg.subtotal,
+        date: seg.start,
         addedBy: `guest:${request.auth!.uid}`,
         addedAt: new Date().toISOString(),
-      }];
+      }));
       if (calc.discountAmount > 0) {
         folioCharges.push({
           id: `chg_${Date.now()}_disc`,
