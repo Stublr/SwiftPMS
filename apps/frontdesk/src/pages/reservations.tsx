@@ -3,6 +3,8 @@ import {
   formatCents,
   ChargeCategory,
   PaymentMethod,
+  MANUAL_PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
   type Reservation,
   type Guest,
   type RoomType,
@@ -20,7 +22,15 @@ import {
 } from "@/services/reservations";
 import { getAllGuests, createGuest } from "@/services/guests";
 import { getRoomTypes, getRooms } from "@/services/rooms";
-import { getFolioByReservation, addCharge, processPayment } from "@/services/billing";
+import { getFolioByReservation, addCharge, processPayment, emailInvoice } from "@/services/billing";
+
+function extractErrorMessage(err: unknown): string {
+  if (err && typeof err === "object" && "code" in err && "message" in err) {
+    return (err as { message: string }).message;
+  }
+  if (err instanceof Error) return err.message;
+  return "Unknown error";
+}
 import { PeachPayButton } from "@/components/peach-pay-button";
 
 type Tab = "all" | "confirmed" | "checked_in" | "checked_out";
@@ -62,14 +72,6 @@ export function ReservationsPage() {
     }
   }
 
-  function extractErrorMessage(err: unknown): string {
-    if (err && typeof err === "object" && "code" in err && "message" in err) {
-      return (err as { message: string }).message;
-    }
-    if (err instanceof Error) return err.message;
-    return "Unknown error";
-  }
-
   async function handleCheckIn(reservationId: string) {
     try {
       setError("");
@@ -107,8 +109,15 @@ export function ReservationsPage() {
     return g ? `${g.firstName} ${g.lastName}` : guestId.slice(0, 8);
   }
 
+  // The name shown for a reservation: tour-operator bookings made on behalf
+  // of a client show the CLIENT's name, not the operator account's.
+  function reservationGuestName(r: Reservation): string {
+    return r.bookedFor?.name ?? guestName(r.guestId);
+  }
+
   const filteredReservations = search
     ? reservations.filter((r) =>
+        reservationGuestName(r).toLowerCase().includes(search.toLowerCase()) ||
         guestName(r.guestId).toLowerCase().includes(search.toLowerCase()) ||
         r.id.toLowerCase().includes(search.toLowerCase()),
       )
@@ -213,7 +222,15 @@ export function ReservationsPage() {
                   >
                     <td className="px-4 py-3 font-mono text-xs">{res.id.slice(0, 8)}</td>
                     <td className="px-4 py-3 font-medium text-primary">
-                      {guestName(res.guestId)}
+                      {reservationGuestName(res)}
+                      {res.bookedFor && (
+                        <span
+                          className="ml-1.5 rounded-full bg-accent/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent-dark"
+                          title={`Booked by tour operator: ${guestName(res.guestId)} · ${res.bookedFor.email}`}
+                        >
+                          TO
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {res.roomId
@@ -292,7 +309,12 @@ export function ReservationsPage() {
       {selectedReservation && (
         <FolioPanel
           reservation={selectedReservation}
-          guestName={guestName(selectedReservation.guestId)}
+          guestName={reservationGuestName(selectedReservation)}
+          defaultInvoiceEmail={
+            selectedReservation.bookedFor?.email ??
+            guestMap.get(selectedReservation.guestId)?.email ??
+            ""
+          }
           onClose={() => setSelectedReservation(null)}
         />
       )}
@@ -305,10 +327,12 @@ export function ReservationsPage() {
 function FolioPanel({
   reservation,
   guestName,
+  defaultInvoiceEmail,
   onClose,
 }: {
   reservation: Reservation;
   guestName: string;
+  defaultInvoiceEmail: string;
   onClose: () => void;
 }) {
   const [folio, setFolio] = useState<Folio | null>(null);
@@ -316,6 +340,33 @@ function FolioPanel({
   const [error, setError] = useState("");
   const [showAddCharge, setShowAddCharge] = useState(false);
   const [showPayment, setShowPayment] = useState(false);
+  const [invoiceEmail, setInvoiceEmail] = useState(defaultInvoiceEmail);
+  const [sendingInvoice, setSendingInvoice] = useState(false);
+  const [invoiceMsg, setInvoiceMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const canInvoice =
+    reservation.status !== "cancelled" && reservation.status !== "no_show";
+
+  async function handleEmailInvoice(e: React.FormEvent) {
+    e.preventDefault();
+    if (!invoiceEmail.trim()) return;
+    setSendingInvoice(true);
+    setInvoiceMsg(null);
+    try {
+      const res = await emailInvoice({
+        reservationId: reservation.id,
+        email: invoiceEmail.trim(),
+      });
+      setInvoiceMsg({ ok: true, text: `Invoice sent to ${res.sentTo}.` });
+    } catch (err) {
+      setInvoiceMsg({
+        ok: false,
+        text: "Failed to send invoice: " + extractErrorMessage(err),
+      });
+    } finally {
+      setSendingInvoice(false);
+    }
+  }
 
   useEffect(() => {
     loadFolio();
@@ -458,6 +509,43 @@ function FolioPanel({
                   </div>
                 )}
               </div>
+
+              {/* Email invoice — booking-linked email prefilled, editable.
+                  Cancelled / no-show bookings can't be invoiced. */}
+              {canInvoice && (
+                <div className="mt-6 rounded-md border border-border bg-secondary/40 p-4">
+                  <h4 className="text-sm font-semibold">Email invoice</h4>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Sends the tax invoice for this booking. Prefilled with the
+                    booking's email — change it to send elsewhere.
+                  </p>
+                  <form onSubmit={handleEmailInvoice} className="mt-3 flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs font-medium">Recipient email</label>
+                      <input
+                        type="email"
+                        required
+                        value={invoiceEmail}
+                        onChange={(e) => setInvoiceEmail(e.target.value)}
+                        placeholder="guest@example.com"
+                        className="mt-1 w-full rounded-md border border-border px-3 py-1.5 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={sendingInvoice || !invoiceEmail.trim()}
+                      className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                    >
+                      {sendingInvoice ? "Sending…" : "Send Invoice"}
+                    </button>
+                  </form>
+                  {invoiceMsg && (
+                    <p className={`mt-2 text-xs ${invoiceMsg.ok ? "text-success" : "text-destructive"}`}>
+                      {invoiceMsg.text}
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Add Charge Form */}
               {showAddCharge && (
@@ -676,7 +764,10 @@ function PaymentForm({
     reference: "",
   });
 
-  const methods = Object.entries(PaymentMethod).map(([, v]) => v);
+  // Manual-capture methods only — "card" is reserved for gateway-settled
+  // payments (Peach) and "online" always arrives via the gateway; terminal
+  // captures are recorded as speedpoint so the batch slip reconciles.
+  const methods = MANUAL_PAYMENT_METHODS;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -719,7 +810,8 @@ function PaymentForm({
           >
             {methods.map((m) => (
               <option key={m} value={m}>
-                {m.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                {PAYMENT_METHOD_LABELS[m] ??
+                  m.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase())}
               </option>
             ))}
           </select>
