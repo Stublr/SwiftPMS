@@ -534,11 +534,16 @@ async function sendConfirmationEmailForIntent(
   for (const s of rtSnaps) {
     if (s.exists) roomTypeById.set(s.id, (s.data()!.name as string) ?? "Room");
   }
-  const to = guest?.email as string | undefined;
+  // Tour-operator bookings made on behalf of a client go to the client.
+  const bookedFor = primary.bookedFor as { name?: string; email?: string } | null | undefined;
+  const to = bookedFor?.email ?? (guest?.email as string | undefined);
   if (!to) {
     console.log("[sync] No guest email — skipping confirmation");
     return;
   }
+  const recipientName =
+    bookedFor?.name ??
+    (`${guest?.firstName ?? ""} ${guest?.lastName ?? ""}`.trim() || "Guest");
 
   const isGroup = reservations.length > 1;
   const totalAcrossGroup = reservations.reduce(
@@ -579,8 +584,7 @@ async function sendConfirmationEmailForIntent(
 
   await sendBookingConfirmation({
     to,
-    guestName:
-      `${guest?.firstName ?? ""} ${guest?.lastName ?? ""}`.trim() || "Guest",
+    guestName: recipientName,
     propertyName: (prop?.name as string) ?? "Our Lodge",
     propertyEmail: (prop?.email as string) ?? undefined,
     propertyPhone: (prop?.phone as string) ?? undefined,
