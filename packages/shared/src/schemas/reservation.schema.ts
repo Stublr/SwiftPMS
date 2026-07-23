@@ -2,6 +2,19 @@ import { z } from "zod";
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Tour operators can book on behalf of a client. Only honored server-side
+ * when the caller is an active tour operator.
+ */
+export const bookedForSchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    email: z.string().email().max(200),
+    phone: z.string().max(40).nullish().transform((v) => v ?? undefined),
+  })
+  .nullish()
+  .transform((v) => v ?? undefined);
+
 export const createReservationSchema = z
   .object({
     guestId: z.string().min(1, "Guest is required"),
@@ -16,6 +29,7 @@ export const createReservationSchema = z
     /** Pensioners (SA senior citizens, staff-verified). Priced at the tier's extraSenior rate. */
     pensioners: z.number().int().min(0).nullish().transform((v) => v ?? 0),
     specialRequests: z.string().max(1000).nullish().transform((v) => v ?? undefined),
+    bookedFor: bookedForSchema,
     // Optional client-generated idempotency token to dedupe retries.
     clientRequestId: z
       .string()
@@ -56,6 +70,7 @@ export const createReservationGroupSchema = z
       .min(1, "At least one campsite is required")
       .max(10, "Max 10 sites per group booking"),
     specialRequests: z.string().max(1000).nullish().transform((v) => v ?? undefined),
+    bookedFor: bookedForSchema,
     clientRequestId: z
       .string()
       .min(1)
