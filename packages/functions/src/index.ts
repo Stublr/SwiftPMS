@@ -33,6 +33,10 @@ export { createGuestReservationGroup } from "./guest/createGuestReservationGroup
 export { createGuest } from "./guest/createGuest.js";
 export { getTourOperatorStatus } from "./guest/getTourOperatorStatus.js";
 export { setTourOperatorDiscount } from "./guest/setTourOperatorDiscount.js";
+export { applyTourOperator } from "./guest/applyTourOperator.js";
+export { reviewTourOperatorApplication } from "./guest/reviewTourOperatorApplication.js";
+export { setReservationClient } from "./guest/setReservationClient.js";
+export { emailInvoice } from "./billing/emailInvoice.js";
 
 // Triggers
 export { onReservationUpdate } from "./triggers/onReservationUpdate.js";
