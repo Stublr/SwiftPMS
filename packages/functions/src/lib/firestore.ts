@@ -39,6 +39,10 @@ export function tourOperatorsRef(tenantId: string) {
   return tenantRef(tenantId).collection("tourOperators");
 }
 
+export function tourOperatorApplicationsRef(tenantId: string) {
+  return tenantRef(tenantId).collection("tourOperatorApplications");
+}
+
 // --- Room Types ---
 
 export function roomTypesRef(tenantId: string) {
