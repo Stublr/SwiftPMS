@@ -36,6 +36,11 @@ export interface Shift {
   closedAt: string | null;
   cashCounted: number | null;
   cashDiscrepancy: number | null;
+  /** Speedpoint terminal batch slip total (cents), if entered at close. */
+  batchTotal?: number | null;
+  batchReference?: string | null;
+  /** batchTotal − recorded speedpoint sales for the shift. */
+  speedpointDiscrepancy?: number | null;
   expectedByMethod: Record<string, number> | null;
   expectedCashInDrawer?: number | null;
   totalPayments: number | null;
@@ -98,6 +103,9 @@ export interface CloseShiftResult {
   expectedCashInDrawer: number;
   cashCounted: number;
   cashDiscrepancy: number;
+  batchTotal: number | null;
+  batchReference: string | null;
+  speedpointDiscrepancy: number | null;
   paymentCount: number;
 }
 
@@ -105,10 +113,19 @@ export async function closeShift(
   shiftId: string,
   cashCounted: number,
   notes: string | undefined,
+  batchTotal?: number,
+  batchReference?: string,
 ): Promise<CloseShiftResult> {
   const { propertyId } = getPath();
   const fn = httpsCallable(functions, "closeShift");
-  const result = await fn({ propertyId, shiftId, cashCounted, notes });
+  const result = await fn({
+    propertyId,
+    shiftId,
+    cashCounted,
+    notes,
+    batchTotal: batchTotal ?? null,
+    batchReference: batchReference ?? null,
+  });
   return result.data as CloseShiftResult;
 }
 
