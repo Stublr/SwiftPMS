@@ -48,6 +48,20 @@ export const closeShift = onCall({ cors: true }, async (request) => {
     }
     const notes = ((request.data.notes as string | undefined) ?? "").slice(0, 1000);
 
+    // Speedpoint batch slip (optional): the terminal's end-of-day batch total,
+    // reconciled against the speedpoint payments recorded this shift.
+    const batchTotalRaw = request.data.batchTotal;
+    let batchTotal: number | null = null;
+    if (batchTotalRaw !== undefined && batchTotalRaw !== null && batchTotalRaw !== "") {
+      batchTotal = Number(batchTotalRaw);
+      if (!Number.isFinite(batchTotal) || batchTotal < 0) {
+        throw preconditionFailed("batchTotal must be a non-negative integer (cents)");
+      }
+      batchTotal = Math.round(batchTotal);
+    }
+    const batchReference = ((request.data.batchReference as string | undefined) ?? "")
+      .slice(0, 120) || null;
+
     const ref = shiftRef(tenantId, propertyId, shiftId);
     const snap = await ref.get();
     if (!snap.exists) throw notFound("Shift not found");
@@ -108,6 +122,11 @@ export const closeShift = onCall({ cors: true }, async (request) => {
     const expectedCashInDrawer = openingFloat + expectedCash;
     const cashDiscrepancy = Math.round(cashCounted) - expectedCashInDrawer;
 
+    // Speedpoint reconciliation: batch slip total vs recorded speedpoint sales.
+    const expectedSpeedpoint = expectedByMethod.speedpoint ?? 0;
+    const speedpointDiscrepancy =
+      batchTotal != null ? batchTotal - expectedSpeedpoint : null;
+
     // Persist. Single write — the counted-payments list is stored on the
     // shift doc so the cashup is fully self-contained for later audit.
     await db.runTransaction(async (tx) => {
@@ -128,6 +147,9 @@ export const closeShift = onCall({ cors: true }, async (request) => {
         closedAt: nowIso,
         cashCounted: Math.round(cashCounted),
         cashDiscrepancy,
+        batchTotal,
+        batchReference,
+        speedpointDiscrepancy,
         expectedByMethod,
         expectedCashInDrawer,
         totalPayments,
@@ -151,6 +173,8 @@ export const closeShift = onCall({ cors: true }, async (request) => {
         expectedByMethod,
         cashCounted: Math.round(cashCounted),
         cashDiscrepancy,
+        batchTotal,
+        speedpointDiscrepancy,
         paymentCount: counted.length,
       },
     }).catch(() => {});
@@ -163,6 +187,9 @@ export const closeShift = onCall({ cors: true }, async (request) => {
       expectedCashInDrawer,
       cashCounted: Math.round(cashCounted),
       cashDiscrepancy,
+      batchTotal,
+      batchReference,
+      speedpointDiscrepancy,
       paymentCount: counted.length,
     };
   } catch (err) {
