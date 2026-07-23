@@ -56,6 +56,11 @@ export function GuestHeader() {
             active={currentPage === "/"}
             onClick={() => navigate("/")}
           />
+          <NavLink
+            label="Tour Operators"
+            active={currentPage === "/tour-operator"}
+            onClick={() => navigate("/tour-operator")}
+          />
           {isAuthenticated && (
             <NavLink
               label="My Bookings"
