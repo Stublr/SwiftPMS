@@ -90,6 +90,14 @@ service cloud.firestore {
         allow create, update, delete: if belongsToTenant(tenantId) && isManager();
       }
 
+      // Tour-operator applications — guests submit and read their status via
+      // callables (applyTourOperator / getTourOperatorStatus); staff read the
+      // queue directly. Reviews go through reviewTourOperatorApplication.
+      match /tourOperatorApplications/{applicationId} {
+        allow read: if tenantStaff(tenantId);
+        allow write: if false;
+      }
+
       // Room Types — publicly readable (booking inventory is non-sensitive
       // and the guest portal must list it before login). Manager+ writes.
       match /roomTypes/{roomTypeId} {
