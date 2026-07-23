@@ -8,6 +8,8 @@ import {
 
 import { createGuest } from "@/services/guests";
 import { createReservation } from "@/services/reservations";
+import { processPayment } from "@/services/billing";
+import { PaymentMethod } from "@swiftpms/shared";
 import { getRoomTypes } from "@/services/rooms";
 import { useUIStore } from "@/stores/ui.store";
 import { PeachPayQrButton } from "@/components/peach-pay-qr-button";
@@ -46,6 +48,30 @@ export function WalkInPage() {
     reservationId: string;
     folioId: string;
   } | null>(null);
+
+  // Speedpoint (manual card terminal) capture on the success screen.
+  const [speedpointOpen, setSpeedpointOpen] = useState(false);
+  const [speedpointRef, setSpeedpointRef] = useState("");
+  const [speedpointSaving, setSpeedpointSaving] = useState(false);
+  const [speedpointError, setSpeedpointError] = useState<string | null>(null);
+
+  async function handleSpeedpointPayment() {
+    if (!success) return;
+    setSpeedpointSaving(true);
+    setSpeedpointError(null);
+    try {
+      await processPayment({
+        folioId: success.folioId,
+        method: PaymentMethod.SPEEDPOINT,
+        amount: totalCharge,
+        reference: speedpointRef.trim() || undefined,
+      });
+      navigate(`/folio?res=${success.reservationId}`);
+    } catch {
+      setSpeedpointError("Failed to record the speedpoint payment.");
+      setSpeedpointSaving(false);
+    }
+  }
 
   useEffect(() => {
     getRoomTypes()
@@ -144,11 +170,11 @@ export function WalkInPage() {
         </p>
 
         <div className="mt-6 flex flex-col gap-2">
-          {/* Primary path: show a QR the guest scans on their own phone to
-              pay via Peach hosted checkout. Auto-redirects to the folio
-              once payment settles. */}
+          {/* Payment method choice: online (guest scans a QR, pays on the
+              Peach hosted checkout) or speedpoint (staff captures the card
+              on the physical terminal and records it here). */}
           <PeachPayQrButton
-            label={`Take Card Payment — ${formatCents(totalCharge)}`}
+            label={`Online Card Payment (QR) — ${formatCents(totalCharge)}`}
             amountCents={totalCharge}
             purpose="folio_settlement"
             paymentType="DB"
@@ -159,6 +185,53 @@ export function WalkInPage() {
               navigate(`/folio?res=${success.reservationId}`)
             }
           />
+          {!speedpointOpen ? (
+            <button
+              onClick={() => setSpeedpointOpen(true)}
+              className="rounded-lg border border-primary/40 bg-primary/5 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/10"
+            >
+              Speedpoint Payment — {formatCents(totalCharge)}
+            </button>
+          ) : (
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-left">
+              <p className="text-sm font-semibold">Speedpoint payment</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Process {formatCents(totalCharge)} on the card terminal first,
+                then record it here.
+              </p>
+              <input
+                type="text"
+                value={speedpointRef}
+                onChange={(e) => setSpeedpointRef(e.target.value)}
+                placeholder="Terminal receipt / approval no. (optional)"
+                className="mt-2 w-full rounded-md border border-border px-3 py-2 text-sm"
+              />
+              {speedpointError && (
+                <p className="mt-2 text-xs text-destructive">{speedpointError}</p>
+              )}
+              <div className="mt-3 flex gap-2">
+                <button
+                  onClick={handleSpeedpointPayment}
+                  disabled={speedpointSaving}
+                  className="rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {speedpointSaving
+                    ? "Recording…"
+                    : `Record ${formatCents(totalCharge)} paid`}
+                </button>
+                <button
+                  onClick={() => {
+                    setSpeedpointOpen(false);
+                    setSpeedpointError(null);
+                  }}
+                  disabled={speedpointSaving}
+                  className="rounded-md border border-border px-4 py-2 text-sm hover:bg-secondary"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
           <button
             onClick={() => navigate(`/folio?res=${success.reservationId}`)}
             className="rounded-lg border border-border px-4 py-3 text-sm font-medium hover:bg-secondary"
@@ -168,6 +241,9 @@ export function WalkInPage() {
           <button
             onClick={() => {
               setSuccess(null);
+              setSpeedpointOpen(false);
+              setSpeedpointRef("");
+              setSpeedpointError(null);
               setFirstName("");
               setLastName("");
               setPhone("");
