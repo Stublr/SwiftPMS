@@ -12,6 +12,7 @@ import { ConfirmationPage } from "@/pages/confirmation";
 import { MyBookingsPage } from "@/pages/my-bookings";
 import { LoginPage } from "@/pages/login";
 import { PaymentResultPage } from "@/pages/payment-result";
+import { TourOperatorPage } from "@/pages/tour-operator";
 
 function PageRouter() {
   const currentPage = useUIStore((s) => s.currentPage);
@@ -29,6 +30,8 @@ function PageRouter() {
       return <LoginPage />;
     case "/payment-result":
       return <PaymentResultPage />;
+    case "/tour-operator":
+      return <TourOperatorPage />;
     default:
       return <HomePage />;
   }
