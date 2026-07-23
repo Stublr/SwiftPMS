@@ -39,15 +39,29 @@ export function BookingPage() {
   const [error, setError] = useState<string | null>(null);
   const [specialRequests, setSpecialRequests] = useState("");
   const [discountPercent, setDiscountPercent] = useState(0);
+  const [isTourOperator, setIsTourOperator] = useState(false);
+
+  // Tour operators can book on behalf of a client.
+  const [bookingFor, setBookingFor] = useState<"self" | "client">("self");
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
 
   useEffect(() => {
     if (!isAuthenticated) {
       setDiscountPercent(0);
+      setIsTourOperator(false);
       return;
     }
     getTourOperatorStatus()
-      .then((status) => setDiscountPercent(status.discountPercent))
-      .catch(() => setDiscountPercent(0));
+      .then((status) => {
+        setDiscountPercent(status.discountPercent);
+        setIsTourOperator(status.isTourOperator);
+      })
+      .catch(() => {
+        setDiscountPercent(0);
+        setIsTourOperator(false);
+      });
   }, [isAuthenticated]);
 
   // Auth form state
@@ -137,6 +151,21 @@ export function BookingPage() {
 
   async function handleConfirmBooking() {
     if (!guestId || !selectedRoomTypeId || !checkInDate || !checkOutDate) return;
+
+    // Operator booking for a client — details must be complete before paying.
+    let bookedFor: { name: string; email: string; phone?: string } | undefined;
+    if (isTourOperator && bookingFor === "client") {
+      if (!clientName.trim() || !clientEmail.trim()) {
+        setError("Please enter the client's name and email (or switch to booking under your own details).");
+        return;
+      }
+      bookedFor = {
+        name: clientName.trim(),
+        email: clientEmail.trim(),
+        phone: clientPhone.trim() || undefined,
+      };
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -167,6 +196,7 @@ export function BookingPage() {
             children: it.children,
           })),
           specialRequests: specialRequests.trim() || undefined,
+          bookedFor,
         });
         setGroupResult(groupCreated);
         reservationIdForPayment = groupCreated.reservationIds[0]!;
@@ -184,6 +214,7 @@ export function BookingPage() {
           children,
           specialRequests: specialRequests.trim() || undefined,
           propertyId: selectedPropertyId!,
+          bookedFor,
         });
         setResult({
           reservationId: soloResult.id,
@@ -539,6 +570,84 @@ export function BookingPage() {
             </div>
           )}
 
+          {/* Tour operator: who is this booking for? */}
+          {isAuthenticated && isTourOperator && (
+            <div className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-soft">
+              <h2 className="mb-1 font-display text-lg font-semibold text-foreground">
+                Who is this booking for?
+              </h2>
+              <p className="mb-4 text-xs text-muted-foreground">
+                As a tour operator you can book on behalf of a client. If you
+                don't have their details yet, book under your own details and
+                assign the client later from My Bookings.
+              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:gap-4">
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="radio"
+                    name="bookingFor"
+                    checked={bookingFor === "self"}
+                    onChange={() => setBookingFor("self")}
+                    className="accent-primary"
+                  />
+                  Myself — add the client later
+                </label>
+                <label className="flex items-center gap-2 text-sm text-foreground">
+                  <input
+                    type="radio"
+                    name="bookingFor"
+                    checked={bookingFor === "client"}
+                    onChange={() => setBookingFor("client")}
+                    className="accent-primary"
+                  />
+                  A client — I have their details
+                </label>
+              </div>
+
+              {bookingFor === "client" && (
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-foreground">
+                      Client name *
+                    </label>
+                    <input
+                      type="text"
+                      value={clientName}
+                      onChange={(e) => setClientName(e.target.value)}
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-foreground">
+                      Client email *
+                    </label>
+                    <input
+                      type="email"
+                      value={clientEmail}
+                      onChange={(e) => setClientEmail(e.target.value)}
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-foreground">
+                      Client phone{" "}
+                      <span className="text-muted-foreground">(optional)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      value={clientPhone}
+                      onChange={(e) => setClientPhone(e.target.value)}
+                      className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                    />
+                  </div>
+                  <p className="self-end pb-2 text-xs text-muted-foreground sm:col-span-1">
+                    The confirmation email for this booking goes to the client.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Special Requests */}
           {isAuthenticated && (
             <div className="mb-6 rounded-2xl border border-border bg-surface p-6 shadow-soft">
@@ -681,14 +790,11 @@ export function BookingPage() {
                   )}
 
                   {stayCalc && stayCalc.discountAmount > 0 && (
-                    <div className="flex justify-between text-xs">
-                      <span className="flex items-center gap-1.5 text-leaf-foreground">
-                        <span className="rounded-full bg-leaf-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
-                          Tour operator rate
-                        </span>
-                        −{discountPercent}%
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="whitespace-nowrap rounded-full bg-leaf-soft px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-leaf-foreground">
+                        Tour operator rate −{discountPercent}%
                       </span>
-                      <span className="font-medium text-leaf-foreground">
+                      <span className="whitespace-nowrap font-medium text-leaf-foreground">
                         −{formatCents(stayCalc.discountAmount)}
                       </span>
                     </div>
