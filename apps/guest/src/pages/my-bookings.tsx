@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/ui.store";
 import { useGuestAuthStore } from "@/stores/auth.store";
-import { getMyBookings } from "@/services/booking";
+import { getMyBookings, setReservationClient } from "@/services/booking";
+import { getTourOperatorStatus } from "@/services/tour-operators";
 import { getPropertyInfo, getRoomTypeName, type PropertyInfo } from "@/services/property";
-import { downloadBookingPdf } from "@/lib/booking-pdf";
+import { downloadBookingPdf, downloadInvoicePdf } from "@/lib/booking-pdf";
 import { formatCents } from "@swiftpms/shared";
 import type { Reservation } from "@swiftpms/shared";
 
@@ -24,6 +25,15 @@ export function MyBookingsPage() {
   const [bookings, setBookings] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isTourOperator, setIsTourOperator] = useState(false);
+
+  // Assign-client form state (tour operators only), one booking at a time.
+  const [assigningId, setAssigningId] = useState<string | null>(null);
+  const [clientName, setClientName] = useState("");
+  const [clientEmail, setClientEmail] = useState("");
+  const [clientPhone, setClientPhone] = useState("");
+  const [savingClient, setSavingClient] = useState(false);
+  const [clientNotice, setClientNotice] = useState<string | null>(null);
   const [propertyCache, setPropertyCache] = useState<Map<string, PropertyInfo>>(new Map());
   const [roomTypeCache, setRoomTypeCache] = useState<Map<string, string>>(new Map());
 
@@ -33,7 +43,44 @@ export function MyBookingsPage() {
       return;
     }
     loadBookings();
+    getTourOperatorStatus()
+      .then((s) => setIsTourOperator(s.isTourOperator))
+      .catch(() => setIsTourOperator(false));
   }, [isAuthenticated]);
+
+  function startAssign(booking: Reservation) {
+    setAssigningId(booking.id);
+    setClientName(booking.bookedFor?.name ?? "");
+    setClientEmail(booking.bookedFor?.email ?? "");
+    setClientPhone(booking.bookedFor?.phone ?? "");
+    setClientNotice(null);
+  }
+
+  async function handleAssignClient(booking: Reservation) {
+    if (!clientName.trim() || !clientEmail.trim()) return;
+    setSavingClient(true);
+    setClientNotice(null);
+    try {
+      await setReservationClient({
+        propertyId: booking.propertyId,
+        reservationId: booking.id,
+        name: clientName.trim(),
+        email: clientEmail.trim(),
+        phone: clientPhone.trim() || undefined,
+      });
+      setAssigningId(null);
+      setClientNotice(
+        `Booking assigned to ${clientName.trim()} — a confirmation email has been sent to ${clientEmail.trim()}.`,
+      );
+      await loadBookings();
+    } catch (err) {
+      setClientNotice(
+        err instanceof Error ? err.message : "Failed to assign the client.",
+      );
+    } finally {
+      setSavingClient(false);
+    }
+  }
 
   async function loadBookings() {
     setLoading(true);
@@ -75,6 +122,30 @@ export function MyBookingsPage() {
   function nightCount(ci: string, co: string): number {
     const diff = new Date(co).getTime() - new Date(ci).getTime();
     return Math.max(1, Math.round(diff / 86400000));
+  }
+
+  function pdfData(booking: Reservation) {
+    const prop = propertyCache.get(booking.propertyId);
+    const rtName = roomTypeCache.get(booking.roomTypeId);
+    return { prop, rtName };
+  }
+
+  function handleDownloadInvoice(booking: Reservation) {
+    const { prop, rtName } = pdfData(booking);
+    downloadInvoicePdf({
+      reservation: booking,
+      guestName: booking.bookedFor?.name ?? (firstName ?? "Guest"),
+      guestEmail: booking.bookedFor?.email ?? (useGuestAuthStore.getState().email ?? ""),
+      propertyName: prop?.name,
+      propertyAddress: prop?.address ?? undefined,
+      propertyPhone: prop?.phone ?? undefined,
+      propertyEmail: prop?.email ?? undefined,
+      roomTypeName: rtName,
+      roomNumber: booking.roomId ?? undefined,
+      amenities: prop?.amenities,
+      checkInTime: prop?.checkInTime,
+      checkOutTime: prop?.checkOutTime,
+    });
   }
 
   function handleDownload(booking: Reservation) {
@@ -128,6 +199,12 @@ export function MyBookingsPage() {
       {error && (
         <div className="mb-6 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
+        </div>
+      )}
+
+      {clientNotice && (
+        <div className="mb-6 rounded-xl border border-leaf/30 bg-leaf-soft/40 px-4 py-3 text-sm text-leaf-foreground">
+          {clientNotice}
         </div>
       )}
 
@@ -251,16 +328,102 @@ export function MyBookingsPage() {
                   </div>
                 </div>
 
-                <div className="mt-3 flex justify-end border-t border-border pt-3">
-                  <button
-                    onClick={() => handleDownload(booking)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                  >
-                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                    </svg>
-                    Download Confirmation
-                  </button>
+                {booking.bookedFor && (
+                  <div className="mt-3 rounded-lg bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+                    Booked for{" "}
+                    <span className="font-medium text-foreground">
+                      {booking.bookedFor.name}
+                    </span>{" "}
+                    ({booking.bookedFor.email})
+                  </div>
+                )}
+
+                {isTourOperator &&
+                  assigningId === booking.id &&
+                  (() => {
+                    return (
+                      <div className="mt-3 rounded-lg border border-border bg-muted/30 p-3">
+                        <p className="mb-2 text-xs font-semibold text-foreground">
+                          {booking.bookedFor ? "Change client" : "Assign this booking to a client"}
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          <input
+                            type="text"
+                            placeholder="Client name *"
+                            value={clientName}
+                            onChange={(e) => setClientName(e.target.value)}
+                            className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                          <input
+                            type="email"
+                            placeholder="Client email *"
+                            value={clientEmail}
+                            onChange={(e) => setClientEmail(e.target.value)}
+                            className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                          <input
+                            type="tel"
+                            placeholder="Client phone (optional)"
+                            value={clientPhone}
+                            onChange={(e) => setClientPhone(e.target.value)}
+                            className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          The client receives the booking confirmation email straight away.
+                        </p>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={() => handleAssignClient(booking)}
+                            disabled={savingClient || !clientName.trim() || !clientEmail.trim()}
+                            className="rounded-full bg-accent px-4 py-1.5 text-xs font-semibold text-accent-foreground shadow-soft transition-all hover:bg-accent-dark disabled:opacity-50"
+                          >
+                            {savingClient ? "Saving…" : "Save & email client"}
+                          </button>
+                          <button
+                            onClick={() => setAssigningId(null)}
+                            disabled={savingClient}
+                            className="rounded-full border border-border px-4 py-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                <div className="mt-3 flex justify-end gap-2 border-t border-border pt-3">
+                  {isTourOperator &&
+                    assigningId !== booking.id &&
+                    (booking.status === "confirmed" || booking.status === "checked_in") && (
+                      <button
+                        onClick={() => startAssign(booking)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                      >
+                        {booking.bookedFor ? "Change client" : "Assign client"}
+                      </button>
+                    )}
+                  {/* Cancelled / no-show bookings have nothing valid to
+                      download — no confirmation, no invoice. */}
+                  {booking.status !== "cancelled" && booking.status !== "no_show" && (
+                    <>
+                      <button
+                        onClick={() => handleDownloadInvoice(booking)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                      >
+                        Download Invoice
+                      </button>
+                      <button
+                        onClick={() => handleDownload(booking)}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                      >
+                        <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Download Confirmation
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
