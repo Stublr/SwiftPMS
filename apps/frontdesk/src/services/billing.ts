@@ -36,6 +36,20 @@ export async function addCharge(
   });
 }
 
+/**
+ * Email the invoice for a reservation — to the booking-linked email or an
+ * explicitly entered one. Server blocks cancelled / no-show bookings.
+ */
+export async function emailInvoice(data: {
+  reservationId: string;
+  email?: string;
+}): Promise<{ sentTo: string }> {
+  const { propertyId } = getPath();
+  const fn = httpsCallable(functions, "emailInvoice");
+  const result = await fn({ ...data, propertyId });
+  return result.data as { sentTo: string };
+}
+
 export async function processPayment(
   data: Omit<ProcessPaymentRequest, "folioId"> & { folioId: string; clientRequestId?: string },
 ): Promise<void> {
