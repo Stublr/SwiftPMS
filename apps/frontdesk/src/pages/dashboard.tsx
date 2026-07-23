@@ -196,9 +196,12 @@ export function DashboardPage() {
               <div className="mt-2 space-y-1">
                 {todayArrivals.filter((r) => r.status === "confirmed").slice(0, 5).map((res) => {
                   const guest = guestMap.get(res.guestId);
-                  const guestLabel = guest
-                    ? `${guest.firstName} ${guest.lastName}`
-                    : res.guestId.slice(0, 8);
+                  // Tour-operator bookings show the client's name, not the operator's.
+                  const guestLabel =
+                    res.bookedFor?.name ??
+                    (guest
+                      ? `${guest.firstName} ${guest.lastName}`
+                      : res.guestId.slice(0, 8));
                   return (
                     <div
                       key={res.id}
