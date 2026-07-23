@@ -37,6 +37,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ID = process.env.GCLOUD_PROJECT || "swiftpms-prod";
 const APPLY = process.argv.includes("--apply");
 const ONLY_TENANT = process.env.TENANT_ID || null;
+// Comma-separated room-type IDs to restrict to (e.g. "standard-campsite").
+// Unset = every room type in scope.
+const ONLY_ROOM_TYPES = process.env.ROOM_TYPE_ID
+  ? process.env.ROOM_TYPE_ID.split(",").map((s) => s.trim()).filter(Boolean)
+  : null;
 
 // All money in integer cents. R450.00 => 45000.
 const SUGARLOAF_TIERED = {
@@ -89,6 +94,7 @@ async function run() {
   console.log(`\nProject: ${PROJECT_ID}`);
   console.log(`Mode:    ${APPLY ? "APPLY (writing changes)" : "DRY RUN (no writes)"}`);
   console.log(ONLY_TENANT ? `Tenant:  ${ONLY_TENANT} (restricted)` : "Tenant:  ALL tenants");
+  console.log(ONLY_ROOM_TYPES ? `Room types: ${ONLY_ROOM_TYPES.join(", ")} (restricted)` : "Room types: ALL");
   console.log("\nPlanned tariff:");
   console.log(`  Standard: ${rand(SUGARLOAF_TIERED.standard.baseRate)} base (${SUGARLOAF_TIERED.standard.basePersonCount} ppl), ` +
     `${rand(SUGARLOAF_TIERED.standard.extraAdult)}/extra, ${rand(SUGARLOAF_TIERED.standard.extraChild)}/child<3`);
@@ -114,6 +120,10 @@ async function run() {
     console.log(`\n── tenant ${tenant.id} (${tenant.data().name ?? "?"}) — ${roomTypesSnap.size} room type(s)`);
 
     for (const rt of roomTypesSnap.docs) {
+      if (ONLY_ROOM_TYPES && !ONLY_ROOM_TYPES.includes(rt.id)) {
+        console.log(`   • ${rt.data().name ?? rt.id} (${rt.id}): SKIPPED — not in room-type filter`);
+        continue;
+      }
       const d = rt.data();
       const hadTiered = !!d.tieredPricing;
       console.log(
