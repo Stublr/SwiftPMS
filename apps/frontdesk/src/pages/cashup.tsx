@@ -26,7 +26,8 @@ function methodLabel(m: string): string {
   return (
     {
       cash: "Cash",
-      card: "Card",
+      card: "Card (online)",
+      speedpoint: "Card — Speedpoint",
       card_on_arrival: "Card on arrival",
       eft: "EFT",
       other: "Other",
@@ -60,6 +61,8 @@ export function CashupPage() {
   // Form state
   const [openingFloatRands, setOpeningFloatRands] = useState("0");
   const [cashCountedRands, setCashCountedRands] = useState("");
+  const [batchTotalRands, setBatchTotalRands] = useState("");
+  const [batchReference, setBatchReference] = useState("");
   const [notes, setNotes] = useState("");
 
   async function loadAll() {
@@ -117,12 +120,29 @@ export function CashupPage() {
       setError("Enter a valid cash amount (e.g. 4500.00).");
       return;
     }
+    let batchCents: number | undefined;
+    if (batchTotalRands.trim() !== "") {
+      const parsed = parseRandsToCents(batchTotalRands);
+      if (parsed == null) {
+        setError("Enter a valid speedpoint batch total (e.g. 4500.00), or leave it blank.");
+        return;
+      }
+      batchCents = parsed;
+    }
     setBusy(true);
     setError(null);
     try {
-      await closeShift(openShiftState.id, cents, notes.trim() || undefined);
+      await closeShift(
+        openShiftState.id,
+        cents,
+        notes.trim() || undefined,
+        batchCents,
+        batchReference.trim() || undefined,
+      );
       setMode("idle");
       setCashCountedRands("");
+      setBatchTotalRands("");
+      setBatchReference("");
       setNotes("");
       await loadAll();
     } catch (err) {
@@ -182,6 +202,10 @@ export function CashupPage() {
           live={live}
           cashCountedRands={cashCountedRands}
           setCashCountedRands={setCashCountedRands}
+          batchTotalRands={batchTotalRands}
+          setBatchTotalRands={setBatchTotalRands}
+          batchReference={batchReference}
+          setBatchReference={setBatchReference}
           notes={notes}
           setNotes={setNotes}
           onClose={handleClose}
@@ -206,6 +230,7 @@ export function CashupPage() {
                 <th className="px-4 py-2 font-medium">Staff</th>
                 <th className="px-4 py-2 text-right font-medium">Total</th>
                 <th className="px-4 py-2 text-right font-medium">Cash var.</th>
+                <th className="px-4 py-2 text-right font-medium">Batch var.</th>
                 <th className="px-4 py-2 font-medium">Status</th>
               </tr>
             </thead>
@@ -235,6 +260,25 @@ export function CashupPage() {
                       >
                         {s.cashDiscrepancy >= 0 ? "+" : ""}
                         {formatCents(s.cashDiscrepancy)}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-right">
+                    {s.speedpointDiscrepancy != null ? (
+                      <span
+                        title={s.batchReference ?? undefined}
+                        className={
+                          s.speedpointDiscrepancy === 0
+                            ? "text-success"
+                            : Math.abs(s.speedpointDiscrepancy) < 1000
+                              ? "text-warning"
+                              : "text-destructive"
+                        }
+                      >
+                        {s.speedpointDiscrepancy >= 0 ? "+" : ""}
+                        {formatCents(s.speedpointDiscrepancy)}
                       </span>
                     ) : (
                       "—"
@@ -382,6 +426,10 @@ function CloseForm({
   live,
   cashCountedRands,
   setCashCountedRands,
+  batchTotalRands,
+  setBatchTotalRands,
+  batchReference,
+  setBatchReference,
   notes,
   setNotes,
   onClose,
@@ -392,6 +440,10 @@ function CloseForm({
   live: LiveShiftTotals | null;
   cashCountedRands: string;
   setCashCountedRands: (v: string) => void;
+  batchTotalRands: string;
+  setBatchTotalRands: (v: string) => void;
+  batchReference: string;
+  setBatchReference: (v: string) => void;
   notes: string;
   setNotes: (v: string) => void;
   onClose: () => void;
@@ -403,6 +455,11 @@ function CloseForm({
   const counted = parseRandsToCents(cashCountedRands);
   const discrepancy =
     counted != null ? counted - expectedCashInDrawer : null;
+  const expectedSpeedpoint = live?.expectedByMethod.speedpoint ?? 0;
+  const batchCents =
+    batchTotalRands.trim() !== "" ? parseRandsToCents(batchTotalRands) : null;
+  const speedpointDiscrepancy =
+    batchCents != null ? batchCents - expectedSpeedpoint : null;
 
   return (
     <div className="mt-4 rounded-xl border border-border bg-white p-5 shadow-sm">
@@ -455,6 +512,51 @@ function CloseForm({
                 : `${formatCents(discrepancy)} short`}
           </p>
         )}
+      </div>
+
+      {/* Speedpoint batch slip — reconcile the card terminal's batch total
+          against the speedpoint payments recorded this shift. */}
+      <div className="mt-5 rounded-md bg-secondary/50 p-3">
+        <div className="flex justify-between text-sm">
+          <span className="text-muted-foreground">Speedpoint sales recorded</span>
+          <span className="font-semibold">{formatCents(expectedSpeedpoint)}</span>
+        </div>
+        <label className="mt-3 block text-xs font-medium">
+          Speedpoint batch total (Rands{expectedSpeedpoint > 0 ? "" : ", optional"})
+        </label>
+        <input
+          type="text"
+          inputMode="decimal"
+          value={batchTotalRands}
+          onChange={(e) => setBatchTotalRands(e.target.value)}
+          className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
+          placeholder="From the terminal's end-of-day batch slip"
+        />
+        {speedpointDiscrepancy != null && (
+          <p
+            className={`mt-2 text-sm font-medium ${
+              speedpointDiscrepancy === 0
+                ? "text-success"
+                : Math.abs(speedpointDiscrepancy) < 1000
+                  ? "text-warning"
+                  : "text-destructive"
+            }`}
+          >
+            {speedpointDiscrepancy === 0
+              ? "✓ Batch matches recorded speedpoint sales"
+              : speedpointDiscrepancy > 0
+                ? `+${formatCents(speedpointDiscrepancy)} batch over recorded sales`
+                : `${formatCents(speedpointDiscrepancy)} batch short of recorded sales`}
+          </p>
+        )}
+        <label className="mt-3 block text-xs font-medium">Batch slip no. (optional)</label>
+        <input
+          type="text"
+          value={batchReference}
+          onChange={(e) => setBatchReference(e.target.value)}
+          className="mt-1 block w-full min-w-0 rounded-md border border-border px-3 py-2 text-base"
+          placeholder="e.g. batch #001234"
+        />
       </div>
 
       <div className="mt-4">
