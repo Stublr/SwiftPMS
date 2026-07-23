@@ -321,16 +321,38 @@ export function CheckInPage() {
                   Guest
                 </div>
                 <div className="font-medium">
-                  {guest
-                    ? `${guest.firstName ?? ""} ${guest.lastName ?? ""}`.trim() ||
-                      "(no name)"
-                    : reservation.guestId}
+                  {reservation.bookedFor?.name ??
+                    (guest
+                      ? `${guest.firstName ?? ""} ${guest.lastName ?? ""}`.trim() ||
+                        "(no name)"
+                      : reservation.guestId)}
                 </div>
-                {guest?.email && (
-                  <div className="text-xs text-muted-foreground">{guest.email}</div>
-                )}
-                {guest?.phone && (
-                  <div className="text-xs text-muted-foreground">{guest.phone}</div>
+                {reservation.bookedFor ? (
+                  <>
+                    {reservation.bookedFor.email && (
+                      <div className="text-xs text-muted-foreground">
+                        {reservation.bookedFor.email}
+                      </div>
+                    )}
+                    {reservation.bookedFor.phone && (
+                      <div className="text-xs text-muted-foreground">
+                        {reservation.bookedFor.phone}
+                      </div>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      Booked by tour operator
+                      {guest ? `: ${guest.firstName ?? ""} ${guest.lastName ?? ""}`.trimEnd() : ""}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {guest?.email && (
+                      <div className="text-xs text-muted-foreground">{guest.email}</div>
+                    )}
+                    {guest?.phone && (
+                      <div className="text-xs text-muted-foreground">{guest.phone}</div>
+                    )}
+                  </>
                 )}
               </div>
               <div>
