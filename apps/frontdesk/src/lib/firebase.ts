@@ -32,8 +32,9 @@ export const db = initializeFirestore(app, {
 export const functions = getFunctions(app);
 export const storage = getStorage(app);
 
-// Connect to emulators in development
-if (import.meta.env.DEV) {
+// Connect to emulators in development.
+// Set VITE_USE_EMULATORS=false to run the dev server against live Firebase.
+if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS !== "false") {
   connectAuthEmulator(auth, "http://127.0.0.1:9099", { disableWarnings: true });
   connectFirestoreEmulator(db, "127.0.0.1", 8080);
   connectFunctionsEmulator(functions, "127.0.0.1", 5001);
