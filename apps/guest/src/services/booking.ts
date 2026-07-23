@@ -9,7 +9,7 @@ import {
 import { functions, db } from "@/lib/firebase";
 import { useGuestAuthStore } from "@/stores/auth.store";
 import { getTenantId } from "@/services/property";
-import type { Reservation } from "@swiftpms/shared";
+import type { BookedFor, Reservation } from "@swiftpms/shared";
 
 /**
  * Cancel a reservation the guest just created. Used to roll back the
@@ -34,6 +34,8 @@ export async function createBooking(data: {
   children: number;
   specialRequests?: string;
   propertyId: string;
+  /** Tour operators only: the client this booking is for. */
+  bookedFor?: BookedFor;
 }): Promise<{
   id: string;
   folioId: string;
@@ -65,6 +67,8 @@ export async function createBookingGroup(data: {
   items: { roomTypeId: string; adults: number; children: number }[];
   specialRequests?: string;
   clientRequestId?: string;
+  /** Tour operators only: the client this booking is for. */
+  bookedFor?: BookedFor;
 }): Promise<{
   groupId: string;
   reservationIds: string[];
@@ -81,6 +85,21 @@ export async function createBookingGroup(data: {
     nightCount: number;
     totalRoomCharges: number;
   };
+}
+
+/**
+ * Tour operators only: assign or change the client a booking was made for.
+ * The client immediately receives the confirmation email.
+ */
+export async function setReservationClient(data: {
+  propertyId: string;
+  reservationId: string;
+  name: string;
+  email: string;
+  phone?: string;
+}): Promise<void> {
+  const fn = httpsCallable(functions, "setReservationClient");
+  await fn(data);
 }
 
 export async function getMyBookings(): Promise<Reservation[]> {
