@@ -4,6 +4,8 @@ import {
   ChargeCategory,
   PaymentIntentStatus,
   PaymentMethod,
+  MANUAL_PAYMENT_METHODS,
+  PAYMENT_METHOD_LABELS,
   formatCents,
   type Folio,
   type PaymentIntent,
@@ -471,8 +473,10 @@ export function MobileFolioPage() {
             onChange={(e) => setPayMethod(e.target.value)}
             className="w-full rounded-md border border-border px-3 py-2 text-sm"
           >
-            {Object.values(PaymentMethod).map((m) => (
-              <option key={m} value={m}>{m.replace("_", " ")}</option>
+            {MANUAL_PAYMENT_METHODS.map((m) => (
+              <option key={m} value={m}>
+                {PAYMENT_METHOD_LABELS[m] ?? m.replace("_", " ")}
+              </option>
             ))}
           </select>
           <input
