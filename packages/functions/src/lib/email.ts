@@ -109,6 +109,41 @@ function buildDynamicTemplateData(data: BookingEmailData) {
   };
 }
 
+/**
+ * Send a plain HTML email (no SendGrid dynamic template). Used for invoices,
+ * where the body is composed server-side. Same from-address and no-op-if-
+ * unconfigured behavior as the confirmation sender.
+ */
+export async function sendHtmlEmail(opts: {
+  to: string;
+  subject: string;
+  html: string;
+}): Promise<void> {
+  const apiKey = SENDGRID_API_KEY.value();
+  if (!apiKey) {
+    console.log(`[email] Skipped "${opts.subject}" to ${opts.to} (no SENDGRID_API_KEY)`);
+    return;
+  }
+  const body = {
+    personalizations: [{ to: [{ email: opts.to }] }],
+    from: parseFromAddress(FROM_EMAIL.value()),
+    subject: opts.subject,
+    content: [{ type: "text/html", value: opts.html }],
+  };
+  const res = await fetch("https://api.sendgrid.com/v3/mail/send", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SendGrid send failed (${res.status}): ${text.slice(0, 500)}`);
+  }
+}
+
 export async function sendBookingConfirmation(opts: BookingEmailData) {
   const apiKey = SENDGRID_API_KEY.value();
   if (!apiKey) {
