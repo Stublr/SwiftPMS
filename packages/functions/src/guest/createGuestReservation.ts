@@ -72,6 +72,7 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
       .limit(1)
       .get();
     const tenantSnap = await tenantRef(tenantId).get();
+    const isTourOperator = !operatorSnap.empty;
     const discountPercent = !operatorSnap.empty
       ? ((tenantSnap.data()?.settings?.tourOperatorDiscountPercent as number | undefined) ?? 0)
       : 0;
@@ -79,6 +80,11 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
     // Verify guestId matches authenticated user
     if (data.guestId !== request.auth.uid) {
       throw preconditionFailed("guestId must match authenticated user");
+    }
+
+    // Booking on behalf of a client is a tour-operator-only capability.
+    if (data.bookedFor && !isTourOperator) {
+      throw preconditionFailed("Only registered tour operators can book on behalf of a client");
     }
 
     const result = await db.runTransaction(async (tx) => {
@@ -171,6 +177,13 @@ export const createGuestReservation = onCall({ cors: true }, async (request) => 
         roomRate,
         totalRoomCharges,
         specialRequests: data.specialRequests ?? null,
+        bookedFor: data.bookedFor
+          ? {
+              name: data.bookedFor.name,
+              email: data.bookedFor.email.toLowerCase(),
+              phone: data.bookedFor.phone ?? null,
+            }
+          : null,
         source: "guest_portal",
         createdBy: `guest:${request.auth!.uid}`,
         clientRequestId: data.clientRequestId ?? null,
