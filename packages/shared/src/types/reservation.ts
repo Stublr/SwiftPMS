@@ -1,5 +1,12 @@
 import type { ReservationStatus } from "../constants/reservation-status.js";
 
+/** Client a tour operator booked on behalf of. */
+export interface BookedFor {
+  name: string;
+  email: string;
+  phone?: string | null;
+}
+
 export interface Reservation {
   id: string;
   propertyId: string;
@@ -21,6 +28,8 @@ export interface Reservation {
   roomRate: number; // cents per night (snapshot at booking time)
   totalRoomCharges: number; // cents
   specialRequests: string | null;
+  /** Set when a tour operator booked on behalf of a client. */
+  bookedFor?: BookedFor | null;
   source: "front_desk" | "guest_portal";
   createdBy: string;
   checkedInAt: string | null;
