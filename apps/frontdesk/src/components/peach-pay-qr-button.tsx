@@ -129,7 +129,11 @@ export function PeachPayQrButton({
     doneRef.current = false;
 
     try {
-      const shopperResultUrl = `${window.location.origin}/?payment_return=1`;
+      // Fixed prod domain (not window.location.origin): Peach validates the
+      // return domain against the merchant allowlist, and localhost/dev
+      // origins aren't on it. The QR flow completes via status polling, so
+      // the shopper landing on the prod frontdesk is fine even in dev.
+      const shopperResultUrl = "https://pms.algafusion.com/?payment_return=1";
       const result = await initiatePeachCheckout({
         purpose,
         amount: amountCents,
