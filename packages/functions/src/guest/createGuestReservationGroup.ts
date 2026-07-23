@@ -105,6 +105,18 @@ export const createGuestReservationGroup = onCall(
         throw preconditionFailed("guestId must match authenticated user");
       }
 
+      // Booking on behalf of a client is a tour-operator-only capability.
+      if (data.bookedFor && operatorSnap.empty) {
+        throw preconditionFailed("Only registered tour operators can book on behalf of a client");
+      }
+      const bookedFor = data.bookedFor
+        ? {
+            name: data.bookedFor.name,
+            email: data.bookedFor.email.toLowerCase(),
+            phone: data.bookedFor.phone ?? null,
+          }
+        : null;
+
       const groupId = `grp_${Date.now().toString(36)}_${crypto.randomBytes(3).toString("hex")}`;
       const holdExpiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
       const nightCount = calculateNights(data.checkInDate, data.checkOutDate);
@@ -261,6 +273,7 @@ export const createGuestReservationGroup = onCall(
             roomRate: a.roomRate,
             totalRoomCharges: a.totalRoomCharges,
             specialRequests: data.specialRequests ?? null,
+            bookedFor,
             source: "guest_portal",
             createdBy: `guest:${request.auth!.uid}`,
             clientRequestId: data.clientRequestId ?? null,
